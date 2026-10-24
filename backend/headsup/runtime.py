@@ -27,8 +27,10 @@ from .doctor import Doctor
 from .db import FoundationRepository
 from .events import EventBus, EventLog
 from .holdline import HoldLineRunner, SimBusiness, TwilioHoldLine
+from .executor import Executor
 from .ledger import Ledger
 from .lifecycle import LifecycleService
+from .messaging import SimulatedMessaging, UnavailableMessaging
 from .pairing import PairingStore
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
@@ -50,6 +52,7 @@ class Runtime:
         self.settings = settings
         self.log = EventLog(settings.db_path)
         self.foundation = FoundationRepository(self.log.db)
+        self.messaging = self._messaging_provider()
         self.lifecycle = LifecycleService(self.foundation)
         self.pairing = PairingStore(settings.pairing_token)
         self.bus = EventBus(self.log)
@@ -76,6 +79,7 @@ class Runtime:
         self.clock = Clock()
         self.devices.today = self.clock.today
         self.calendar = self._calendar_provider()
+        self.executor = Executor(self.foundation, self.messaging, lambda: self.calendar)
 
         # Shared state.
         self.tasks: dict[str, Task] = {}
@@ -121,6 +125,14 @@ class Runtime:
             scopes=scopes,
         )
 
+    def _messaging_provider(self):
+        # Live messaging is Beeper, connected after Level A; until then "live" fails visibly.
+        if self.settings.messaging_mode == "mock":
+            return SimulatedMessaging(self.foundation)
+        if self.settings.messaging_mode == "live":
+            return UnavailableMessaging()
+        return UnavailableMessaging("MESSAGING_MODE must be mock or live")
+
     def reset_foundation(self, scenario_id: str):
         state = self.foundation.reset(scenario_id)
         if self.settings.calendar_mode == "mock":
@@ -130,11 +142,13 @@ class Runtime:
     # ---- lifecycle ----
 
     async def start(self) -> None:
+        recovered = await self.executor.resume()  # finish work approved before a restart
         for agent in self.agents.values():
             agent.start()
         self._bg.append(asyncio.create_task(self._guardian()))
         self.bus.publish("system.started", {"offline": self.settings.offline, "agents": list(self.agents),
-                                            "budget_usd": self.ledger.daily_budget_usd}, source="runtime")
+                                            "budget_usd": self.ledger.daily_budget_usd,
+                                            "recovered_executions": len(recovered)}, source="runtime")
 
     async def stop(self) -> None:
         background = self._bg + self._runner_tasks()

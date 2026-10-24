@@ -1,11 +1,15 @@
-"""Versioned proposal approval and idempotent simulated execution."""
+"""Versioned proposals: revise, reject, and approve an exact version.
+
+Approval only queues the plan; ``executor.Executor`` is the one place that acts.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
 from .db import FoundationRepository
-from .models import Action, ActionResult, Approval, ExecutionOutcome, Plan, PlanPatch
+from .executor import approval_id
+from .models import Action, Approval, ExecutionOutcome, Plan, PlanPatch
 
 
 class LifecycleError(RuntimeError):
@@ -71,11 +75,13 @@ class LifecycleService:
     def approve(
         self, plan_id: str, expected_version: int, user_id: str, approval_channel: str
     ) -> ExecutionOutcome:
+        """Record the approval and queue execution in one transaction. Nothing runs here:
+        the Executor picks up approved plans, including after a restart."""
         with self.repository.transaction():
             plan = self.get_plan(plan_id)
             self._require_version(plan, expected_version)
-            previous = self.repository.results_for_actions([action.id for action in plan.actions])
-            if plan.status in {"completed", "partially_failed", "failed"} and len(previous) == len(plan.actions):
+            if self.repository.get("approvals", approval_id(plan)) is not None:
+                previous = self.repository.results_for_actions([action.id for action in plan.actions])
                 return ExecutionOutcome(plan=plan, results=previous, duplicate=True)
             if plan.status != "proposed":
                 raise LifecycleError("INVALID_STATE", "only a proposed plan can be approved")
@@ -85,7 +91,7 @@ class LifecycleService:
                 raise LifecycleError("STALE_PLAN", "plan has expired")
 
             approval = Approval(
-                id=f"approval_{plan.id}_v{plan.version}",
+                id=approval_id(plan),
                 plan_id=plan.id,
                 plan_version=plan.version,
                 user_id=user_id,
@@ -93,57 +99,9 @@ class LifecycleService:
                 approval_channel=approval_channel,
             )
             self.repository.put("approvals", approval)
-            results: list[ActionResult] = []
-            completed_actions: list[Action] = []
-            by_action: dict[str, ActionResult] = {}
-            for action in plan.actions:
-                blocked = any(
-                    dependency not in by_action
-                    or by_action[dependency].status in {"failed", "unknown", "skipped"}
-                    for dependency in action.depends_on_action_ids
-                )
-                if blocked:
-                    result = ActionResult(
-                        action_id=action.id,
-                        provider="executor",
-                        provider_mode="mock",
-                        status="skipped",
-                        error_code="DEPENDENCY_FAILED",
-                        completed_at=datetime.now(timezone.utc),
-                    )
-                    completed_actions.append(action.model_copy(update={"status": "skipped"}))
-                elif action.type == "send_message" and (not action.contact_id or not action.message_text):
-                    result = ActionResult(
-                        action_id=action.id,
-                        provider="simulated_outbox",
-                        provider_mode="mock",
-                        status="failed",
-                        error_code="INVALID_RECIPIENT",
-                        completed_at=datetime.now(timezone.utc),
-                    )
-                    completed_actions.append(action.model_copy(update={"status": "failed"}))
-                else:
-                    provider = "simulated_outbox" if action.type == "send_message" else "simulated_calendar"
-                    result = ActionResult(
-                        action_id=action.id,
-                        provider=provider,
-                        provider_mode="mock",
-                        status="simulated",
-                        provider_reference=f"outbox:{action.id}",
-                        completed_at=datetime.now(timezone.utc),
-                    )
-                    completed_actions.append(action.model_copy(update={"status": "simulated"}))
-                self.repository.put("action_results", result)
-                results.append(result)
-                by_action[action.id] = result
-            successful = sum(result.status in {"succeeded", "simulated"} for result in results)
-            failed = len(results) - successful
-            status = "completed" if not failed else ("partially_failed" if successful else "failed")
-            completed = plan.model_copy(
-                update={"status": status, "actions": completed_actions}
-            )
-            self.repository.put_plan(completed)
-            return ExecutionOutcome(plan=completed, results=results, duplicate=False)
+            queued = plan.model_copy(update={"status": "approved"})
+            self.repository.put_plan(queued)
+            return ExecutionOutcome(plan=queued, results=[], duplicate=False)
 
     @staticmethod
     def _require_version(plan: Plan, expected_version: int) -> None:

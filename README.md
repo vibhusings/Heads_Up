@@ -26,6 +26,14 @@ idempotent signal ingestion, versioned proposal editing, approval/rejection, and
 simulated action history. Its canonical contracts and fixture are documented in
 `contracts/README.md`.
 
+With the backend running, exercise either complete Level A scenario with:
+
+```bash
+cd backend
+.venv/bin/python -m headsup.demo --scenario foundation
+.venv/bin/python -m headsup.demo --scenario flight
+```
+
 Calendar defaults to `CALENDAR_MODE=mock`. For a dedicated test calendar, enable
 the Google Calendar API, create a Desktop OAuth client, then authorize read-only
 access on the demo laptop (keep both files outside the repository):
@@ -60,6 +68,7 @@ by another organizer.
 | `HEADSUP_RECEIPT_AT` | `21:30` | When the end-of-day receipt plays |
 | `HEADSUP_PAIRING_TOKEN` | unset | Required `X-Pairing-Token` value for `/api/location` |
 | `HEADSUP_CORS_ORIGINS` | local Vite origins | Comma-separated frontend origins allowed to call `/api` |
+| `MESSAGING_MODE` | `mock` | `mock` records a simulated outbox result; unconfigured `live` fails truthfully |
 
 Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on another model automatically.
 

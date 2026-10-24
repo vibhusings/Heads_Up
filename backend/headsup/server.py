@@ -27,12 +27,14 @@ from .chaos import FAULTS
 from .config import settings
 from .engine import process
 from .lifecycle import LifecycleError
+from .messaging import outbox
 from .models import (
     ActionResult,
     ExecutionOutcome,
     Health,
     LocationInput,
     LocationResult,
+    OutboxEntry,
     Plan,
     PlanCommand,
     PlanPatch,
@@ -77,11 +79,13 @@ def rt_of(request_or_ws) -> Runtime:
 async def api_health(request: Request):
     rt = rt_of(request)
     calendar = rt.calendar.health()
-    healthy = calendar.get("status") in {"ok", "configured"}
+    messaging = rt.messaging.health()
+    healthy = calendar.get("status") in {"ok", "configured"} and messaging.get("status") == "ok"
     return Health(
         status="ok" if healthy else "degraded",
         providers={
             "calendar": calendar,
+            "messaging": messaging,
             "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
             "phone_pairing": {"mode": "live", "status": rt.pairing.status()},
             "voice": {"mode": "live", "status": "configured" if rt.settings.vapi_webhook_secret else "disabled"},
@@ -187,10 +191,15 @@ async def api_plan_patch(plan_id: str, body: PlanPatch, request: Request):
 
 @app.post("/api/plans/{plan_id}/approve", response_model=ExecutionOutcome)
 async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
+    rt = rt_of(request)
     try:
-        return rt_of(request).lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
+        queued = rt.lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+    # The approval is already durable; if this request dies here, the executor resumes on restart.
+    plan = await rt.executor.run_plan(plan_id)
+    results = rt.foundation.results_for_actions([action.id for action in plan.actions])
+    return ExecutionOutcome(plan=plan, results=results, duplicate=queued.duplicate)
 
 
 @app.post("/api/plans/{plan_id}/reject", response_model=Plan)
@@ -214,13 +223,18 @@ async def api_voice_webhook(
     supplied = x_vapi_secret or (authorization or "").removeprefix("Bearer ").strip()
     if not supplied or not secrets.compare_digest(supplied, expected):
         raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "valid Vapi credential required"})
-    tools = VoiceTools(rt.lifecycle, rt.foundation.session)
-    return handle_webhook(tools, await request.json())
+    tools = VoiceTools(rt.lifecycle, rt.foundation.session, rt.executor.run_plan)
+    return await handle_webhook(tools, await request.json())
 
 
 @app.get("/api/actions", response_model=list[ActionResult])
 async def api_actions(request: Request):
     return rt_of(request).foundation.session().results
+
+
+@app.get("/api/outbox", response_model=list[OutboxEntry])
+async def api_outbox(request: Request):
+    return outbox(rt_of(request).foundation)
 
 
 # ---------- device ----------

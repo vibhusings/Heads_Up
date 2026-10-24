@@ -9,7 +9,7 @@ attach to the saved Vapi assistant.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -65,11 +65,17 @@ def _summary(plan: Plan, session: SessionState) -> dict[str, Any]:
 
 
 class VoiceTools:
-    def __init__(self, lifecycle: LifecycleService, session: Callable[[], SessionState]):
+    def __init__(
+        self,
+        lifecycle: LifecycleService,
+        session: Callable[[], SessionState],
+        execute: Callable[[str], Awaitable[Plan | None]],
+    ):
         self.lifecycle = lifecycle
         self.session = session
+        self.execute = execute  # the same Executor.run_plan the approve button uses
 
-    def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         handler = {
             "get_plan": (GetPlanArgs, self.get_plan),
             "revise_plan": (RevisePlanArgs, self.revise_plan),
@@ -87,10 +93,13 @@ class VoiceTools:
                 raise VoiceError(f"voice cannot set {', '.join(map(str, extra))}; recipients come from the plan") from exc
             raise VoiceError(f"invalid arguments for {name}") from exc
         try:
-            return run(args)
+            result = run(args)
+            return await result if hasattr(result, "__await__") else result
         except LifecycleError as exc:
             if exc.code == "STALE_PLAN":
                 current = self._current_version(getattr(args, "plan_id", None))
+                if current == getattr(args, "expected_version", None):
+                    raise VoiceError("The plan has expired. Nothing was sent; tell the user.") from exc
                 raise VoiceError(
                     f"The plan changed; it is now version {current}. Read it to the user and ask again. Do not retry."
                 ) from exc
@@ -119,12 +128,14 @@ class VoiceTools:
         plan = self.lifecycle.reject(args.plan_id, args.expected_version)
         return {"plan": _summary(plan, self.session())}
 
-    def approve_plan(self, args: PlanVersionArgs) -> dict[str, Any]:
-        outcome = self.lifecycle.approve(args.plan_id, args.expected_version, VOICE_USER, "voice")
+    async def approve_plan(self, args: PlanVersionArgs) -> dict[str, Any]:
+        queued = self.lifecycle.approve(args.plan_id, args.expected_version, VOICE_USER, "voice")
+        plan = await self.execute(args.plan_id) or queued.plan
+        results = self.lifecycle.repository.results_for_actions([action.id for action in plan.actions])
         return {
-            "plan": _summary(outcome.plan, self.session()),
-            "duplicate": outcome.duplicate,
-            "results": [{"status": r.status, "provider_mode": r.provider_mode} for r in outcome.results],
+            "plan": _summary(plan, self.session()),
+            "duplicate": queued.duplicate,
+            "results": [{"status": r.status, "provider_mode": r.provider_mode} for r in results],
         }
 
     def _current_version(self, plan_id: str | None) -> int | str:
@@ -134,7 +145,7 @@ class VoiceTools:
             return "unknown"
 
 
-def handle_webhook(tools: VoiceTools, body: dict[str, Any]) -> dict[str, Any]:
+async def handle_webhook(tools: VoiceTools, body: dict[str, Any]) -> dict[str, Any]:
     """Answer a Vapi server message. Only tool-calls need a reply; other types are acknowledged."""
     message = body.get("message") or {}
     if message.get("type") != "tool-calls":
@@ -151,7 +162,7 @@ def handle_webhook(tools: VoiceTools, body: dict[str, Any]) -> dict[str, Any]:
         try:
             if not isinstance(arguments, dict):
                 raise VoiceError("arguments must be an object")
-            result = tools.call(function.get("name", ""), arguments)
+            result = await tools.call(function.get("name", ""), arguments)
             results.append({"toolCallId": call.get("id"), "result": json.dumps(result)})
         except VoiceError as exc:
             results.append({"toolCallId": call.get("id"), "error": str(exc)})
