@@ -59,6 +59,9 @@ class Settings:
     google_calendar_freebusy_enabled: bool = field(
         default_factory=lambda: _env_bool("GOOGLE_CALENDAR_FREEBUSY_ENABLED", False)
     )
+    # Messaging defaults to the labeled local outbox. "live" is Beeper, which is not
+    # connected before Level A is tagged, so live sends fail rather than pretend.
+    messaging_mode: str = field(default_factory=lambda: os.getenv("MESSAGING_MODE", "mock").lower())
     pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: tuple(

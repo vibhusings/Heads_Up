@@ -27,8 +27,10 @@ from .doctor import Doctor
 from .db import FoundationRepository
 from .events import EventBus, EventLog
 from .holdline import HoldLineRunner, SimBusiness, TwilioHoldLine
+from .executor import Executor
 from .ledger import Ledger
 from .lifecycle import LifecycleService
+from .messaging import SimulatedMessaging, UnavailableMessaging
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
 from .telephony import Telephony
@@ -74,6 +76,10 @@ class Runtime:
         self.clock = Clock()
         self.devices.today = self.clock.today
         self.calendar = self._calendar_provider()
+        # Live messaging is Beeper, connected after Level A; until then "live" fails visibly.
+        self.messaging = (SimulatedMessaging(self.foundation) if settings.messaging_mode == "mock"
+                          else UnavailableMessaging())
+        self.executor = Executor(self.foundation, self.messaging, lambda: self.calendar)
 
         # Shared state.
         self.tasks: dict[str, Task] = {}
@@ -131,6 +137,7 @@ class Runtime:
         for agent in self.agents.values():
             agent.start()
         self._bg.append(asyncio.create_task(self._guardian()))
+        self._bg.append(asyncio.create_task(self.executor.resume()))  # finish work approved before a restart
         self.bus.publish("system.started", {"offline": self.settings.offline, "agents": list(self.agents),
                                             "budget_usd": self.ledger.daily_budget_usd}, source="runtime")
 

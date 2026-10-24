@@ -2,11 +2,14 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from headsup.db import FoundationRepository
+from headsup.executor import Executor
 from headsup.lifecycle import LifecycleService
+from headsup.messaging import SimulatedMessaging
 from headsup.models import Action, Plan
+from headsup.providers.calendar import MockCalendarProvider
 
 
-def test_executor_skips_dependencies_and_keeps_independent_actions(tmp_path):
+async def test_executor_skips_dependencies_and_keeps_independent_actions(tmp_path):
     db = sqlite3.connect(tmp_path / "lifecycle.db")
     repository = FoundationRepository(db)
     now = datetime.now(timezone.utc)
@@ -30,12 +33,19 @@ def test_executor_skips_dependencies_and_keeps_independent_actions(tmp_path):
     )
     repository.put_plan(plan)
 
-    outcome = LifecycleService(repository).approve("dependencies", 1, "user", "button")
+    queued = LifecycleService(repository).approve("dependencies", 1, "user", "button")
+    assert queued.plan.status == "approved" and queued.results == []
 
-    assert outcome.plan.status == "partially_failed"
-    assert [result.status for result in outcome.results] == ["failed", "skipped", "simulated"]
-    assert outcome.results[1].error_code == "DEPENDENCY_FAILED"
+    executor = Executor(repository, SimulatedMessaging(repository), lambda: MockCalendarProvider([]))
+    plan = await executor.run_plan("dependencies")
+    results = repository.results_for_actions([action.id for action in plan.actions])
+
+    assert plan.status == "partially_failed"
+    assert [result.status for result in results] == ["failed", "skipped", "simulated"]
+    assert results[0].error_code == "INVALID_RECIPIENT"
+    assert results[1].error_code == "DEPENDENCY_FAILED"
     duplicate = LifecycleService(repository).approve("dependencies", 1, "user", "button")
     assert duplicate.duplicate is True
+    await executor.run_plan("dependencies")
     assert len(repository.session().results) == 3
     db.close()

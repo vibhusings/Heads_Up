@@ -130,6 +130,17 @@ class ActionResult(Contract):
     completed_at: AwareDatetime | None = None
 
 
+class OutboxEntry(Contract):
+    """One message the executor handed to the messaging provider, labeled by mode."""
+
+    action_key: str
+    contact_id: str
+    chat_id: str
+    message_text: str
+    provider_mode: Literal["mock", "live"]
+    created_at: AwareDatetime
+
+
 class Approval(Contract):
     id: str
     plan_id: str
