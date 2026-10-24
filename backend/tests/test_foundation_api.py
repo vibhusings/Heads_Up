@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from headsup.db import FoundationRepository
+from headsup.demo import run_demo
 from headsup.engine import process
 from headsup.models import Event, Signal
 from headsup.server import app, settings
@@ -188,3 +189,31 @@ def test_rejection_never_executes_and_frontend_origin_is_allowed(tmp_path, monke
         )
         assert preflight.status_code == 200
         assert preflight.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_automated_demo_runner_completes_both_scenarios(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "db_path", str(tmp_path / "demo.db"))
+    monkeypatch.setattr(settings, "offline", True)
+    monkeypatch.setattr(settings, "calendar_mode", "mock")
+    monkeypatch.setattr(settings, "messaging_mode", "mock")
+    with TestClient(app) as client:
+        dinner = run_demo(client, "foundation")
+        flight = run_demo(client, "flight")
+    assert dinner["status"] == "completed"
+    assert dinner["action"]["provider"] == "simulated_outbox"
+    assert flight["status"] == "completed"
+
+
+def test_health_reports_unconfigured_live_messaging_without_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "db_path", str(tmp_path / "health.db"))
+    monkeypatch.setattr(settings, "offline", True)
+    monkeypatch.setattr(settings, "calendar_mode", "mock")
+    monkeypatch.setattr(settings, "messaging_mode", "live")
+    with TestClient(app) as client:
+        health = client.get("/api/health").json()
+    assert health["status"] == "degraded"
+    assert health["providers"]["messaging"] == {
+        "mode": "live",
+        "status": "unavailable",
+        "error_code": "AUTH_REQUIRED",
+    }

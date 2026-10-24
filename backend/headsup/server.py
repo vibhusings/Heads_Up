@@ -76,11 +76,13 @@ def rt_of(request_or_ws) -> Runtime:
 async def api_health(request: Request):
     rt = rt_of(request)
     calendar = rt.calendar.health()
-    healthy = calendar.get("status") in {"ok", "configured"}
+    messaging = rt.messaging.health()
+    healthy = calendar.get("status") in {"ok", "configured"} and messaging.get("status") == "ok"
     return Health(
         status="ok" if healthy else "degraded",
         providers={
             "calendar": calendar,
+            "messaging": messaging,
             "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
             "phone_pairing": {"mode": "live", "status": "configured" if rt.settings.pairing_token else "disabled"},
         },

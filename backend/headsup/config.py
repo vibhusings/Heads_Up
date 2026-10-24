@@ -51,6 +51,7 @@ class Settings:
     # Calendar defaults to deterministic fixtures. Live mode uses user OAuth
     # files kept outside the repository on the designated demo laptop.
     calendar_mode: str = field(default_factory=lambda: os.getenv("CALENDAR_MODE", "mock").lower())
+    messaging_mode: str = field(default_factory=lambda: os.getenv("MESSAGING_MODE", "mock").lower())
     google_calendar_id: str = field(default_factory=lambda: os.getenv("GOOGLE_CALENDAR_ID", "primary"))
     google_calendar_token_file: str | None = field(default_factory=lambda: os.getenv("GOOGLE_CALENDAR_TOKEN_FILE"))
     google_calendar_write_enabled: bool = field(

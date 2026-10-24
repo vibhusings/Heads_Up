@@ -42,6 +42,7 @@ from .providers.calendar import (
     MockCalendarProvider,
     UnavailableCalendarProvider,
 )
+from .providers.messaging import MockMessagingProvider, UnavailableMessagingProvider
 
 
 class Runtime:
@@ -49,7 +50,8 @@ class Runtime:
         self.settings = settings
         self.log = EventLog(settings.db_path)
         self.foundation = FoundationRepository(self.log.db)
-        self.lifecycle = LifecycleService(self.foundation)
+        self.messaging = self._messaging_provider()
+        self.lifecycle = LifecycleService(self.foundation, self.messaging)
         self.bus = EventBus(self.log)
         self.ledger = Ledger(settings.daily_budget_usd)
         self.brain = Brain(settings, self.ledger, self.bus)
@@ -119,20 +121,31 @@ class Runtime:
             scopes=scopes,
         )
 
+    def _messaging_provider(self):
+        if self.settings.messaging_mode == "mock":
+            return MockMessagingProvider()
+        if self.settings.messaging_mode == "live":
+            return UnavailableMessagingProvider()
+        return UnavailableMessagingProvider("MESSAGING_MODE must be mock or live")
+
     def reset_foundation(self, scenario_id: str):
         state = self.foundation.reset(scenario_id)
         if self.settings.calendar_mode == "mock":
             self.calendar = MockCalendarProvider(state.events)
+        if isinstance(self.messaging, MockMessagingProvider):
+            self.messaging.reset()
         return state
 
     # ---- lifecycle ----
 
     async def start(self) -> None:
+        recovered = self.lifecycle.resume_pending()
         for agent in self.agents.values():
             agent.start()
         self._bg.append(asyncio.create_task(self._guardian()))
         self.bus.publish("system.started", {"offline": self.settings.offline, "agents": list(self.agents),
-                                            "budget_usd": self.ledger.daily_budget_usd}, source="runtime")
+                                            "budget_usd": self.ledger.daily_budget_usd,
+                                            "recovered_executions": len(recovered)}, source="runtime")
 
     async def stop(self) -> None:
         background = self._bg + self._runner_tasks()
