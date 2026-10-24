@@ -1,0 +1,862 @@
+{
+  "health": {
+    "status": "ok",
+    "providers": {
+      "calendar": {
+        "mode": "mock",
+        "status": "ok"
+      },
+      "models": {
+        "mode": "offline",
+        "status": "ok"
+      },
+      "phone_pairing": {
+        "mode": "live",
+        "status": "disabled"
+      }
+    }
+  },
+  "dinner": {
+    "reset": {
+      "id": "demo",
+      "scenario_id": "foundation",
+      "contacts": [
+        {
+          "id": "contact_sam",
+          "display_name": "Sam",
+          "relationship": "friend",
+          "email": "sam@example.test",
+          "beeper_chat_id": null,
+          "preferred_channel": "message",
+          "tone": "informal",
+          "auto_notify_allowed": false
+        }
+      ],
+      "events": [
+        {
+          "id": "event_dinner_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Dinner with Sam",
+          "start_at": "2026-10-25T02:00:00Z",
+          "end_at": "2026-10-25T03:30:00Z",
+          "timezone": "America/Los_Angeles",
+          "mode": "in_person",
+          "destination": "Little Serow",
+          "contact_ids": [
+            "contact_sam"
+          ],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        }
+      ],
+      "signals": [],
+      "impacts": [],
+      "plans": [],
+      "actions": [],
+      "results": [],
+      "approvals": []
+    },
+    "injected": {
+      "id": "demo",
+      "scenario_id": "foundation",
+      "contacts": [
+        {
+          "id": "contact_sam",
+          "display_name": "Sam",
+          "relationship": "friend",
+          "email": "sam@example.test",
+          "beeper_chat_id": null,
+          "preferred_channel": "message",
+          "tone": "informal",
+          "auto_notify_allowed": false
+        }
+      ],
+      "events": [
+        {
+          "id": "event_dinner_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Dinner with Sam",
+          "start_at": "2026-10-25T02:00:00Z",
+          "end_at": "2026-10-25T03:30:00Z",
+          "timezone": "America/Los_Angeles",
+          "mode": "in_person",
+          "destination": "Little Serow",
+          "contact_ids": [
+            "contact_sam"
+          ],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        }
+      ],
+      "signals": [
+        {
+          "id": "demo_dinner_traffic",
+          "kind": "location_eta",
+          "source": "demo",
+          "source_mode": "mock",
+          "observed_at": "2026-10-25T01:40:00Z",
+          "flight_instance_id": null,
+          "estimated_arrival_at": null,
+          "position": null,
+          "route_duration_seconds": 3600
+        }
+      ],
+      "impacts": [
+        {
+          "id": "impact_demo_dinner_traffic",
+          "event_id": "event_dinner_001",
+          "signal_ids": [
+            "demo_dinner_traffic"
+          ],
+          "earliest_arrival_at": "2026-10-25T02:40:00Z",
+          "late_by_seconds": 2400,
+          "reason": "Earliest arrival is 7:40 PM, 40 minutes after Dinner with Sam starts",
+          "confidence": "high",
+          "evidence_times": {
+            "signal_observed_at": "2026-10-25T01:40:00Z"
+          },
+          "status": "proposed"
+        }
+      ],
+      "plans": [
+        {
+          "id": "plan_demo_dinner_traffic",
+          "version": 1,
+          "impact_id": "impact_demo_dinner_traffic",
+          "status": "proposed",
+          "actions": [
+            {
+              "id": "action_demo_dinner_traffic_message_v1",
+              "type": "send_message",
+              "contact_id": "contact_sam",
+              "event_id": "event_dinner_001",
+              "message_text": "Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+              "new_start_at": "2026-10-25T02:45:00Z",
+              "new_end_at": "2026-10-25T04:15:00Z",
+              "depends_on_action_ids": [],
+              "status": "pending"
+            }
+          ],
+          "created_at": "2026-10-24T22:05:15.536755Z",
+          "expires_at": "2026-10-24T22:10:15.536755Z",
+          "evidence_snapshot": {
+            "signal_id": "demo_dinner_traffic",
+            "event_id": "event_dinner_001"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "id": "action_demo_dinner_traffic_message_v1",
+          "type": "send_message",
+          "contact_id": "contact_sam",
+          "event_id": "event_dinner_001",
+          "message_text": "Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+          "new_start_at": "2026-10-25T02:45:00Z",
+          "new_end_at": "2026-10-25T04:15:00Z",
+          "depends_on_action_ids": [],
+          "status": "pending"
+        }
+      ],
+      "results": [],
+      "approvals": []
+    },
+    "revised": {
+      "id": "plan_demo_dinner_traffic",
+      "version": 2,
+      "impact_id": "impact_demo_dinner_traffic",
+      "status": "proposed",
+      "actions": [
+        {
+          "id": "action_demo_dinner_traffic_message_v2",
+          "type": "send_message",
+          "contact_id": "contact_sam",
+          "event_id": "event_dinner_001",
+          "message_text": "[edited] Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+          "new_start_at": "2026-10-25T02:45:00Z",
+          "new_end_at": "2026-10-25T04:15:00Z",
+          "depends_on_action_ids": [],
+          "status": "pending"
+        }
+      ],
+      "created_at": "2026-10-24T22:05:15.536755Z",
+      "expires_at": "2026-10-24T22:10:15.539448Z",
+      "evidence_snapshot": {
+        "signal_id": "demo_dinner_traffic",
+        "event_id": "event_dinner_001"
+      }
+    },
+    "stale_approve": {
+      "status": 409,
+      "body": {
+        "detail": {
+          "code": "STALE_PLAN",
+          "message": "plan version changed; refresh before continuing"
+        }
+      }
+    },
+    "approved": {
+      "plan": {
+        "id": "plan_demo_dinner_traffic",
+        "version": 2,
+        "impact_id": "impact_demo_dinner_traffic",
+        "status": "completed",
+        "actions": [
+          {
+            "id": "action_demo_dinner_traffic_message_v2",
+            "type": "send_message",
+            "contact_id": "contact_sam",
+            "event_id": "event_dinner_001",
+            "message_text": "[edited] Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+            "new_start_at": "2026-10-25T02:45:00Z",
+            "new_end_at": "2026-10-25T04:15:00Z",
+            "depends_on_action_ids": [],
+            "status": "simulated"
+          }
+        ],
+        "created_at": "2026-10-24T22:05:15.536755Z",
+        "expires_at": "2026-10-24T22:10:15.539448Z",
+        "evidence_snapshot": {
+          "signal_id": "demo_dinner_traffic",
+          "event_id": "event_dinner_001"
+        }
+      },
+      "results": [
+        {
+          "action_id": "action_demo_dinner_traffic_message_v2",
+          "provider": "simulated_outbox",
+          "provider_mode": "mock",
+          "status": "simulated",
+          "provider_reference": "outbox:action_demo_dinner_traffic_message_v2",
+          "error_code": null,
+          "completed_at": "2026-10-24T22:05:15.541598Z"
+        }
+      ],
+      "duplicate": false
+    },
+    "duplicate_approve": {
+      "plan": {
+        "id": "plan_demo_dinner_traffic",
+        "version": 2,
+        "impact_id": "impact_demo_dinner_traffic",
+        "status": "completed",
+        "actions": [
+          {
+            "id": "action_demo_dinner_traffic_message_v2",
+            "type": "send_message",
+            "contact_id": "contact_sam",
+            "event_id": "event_dinner_001",
+            "message_text": "[edited] Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+            "new_start_at": "2026-10-25T02:45:00Z",
+            "new_end_at": "2026-10-25T04:15:00Z",
+            "depends_on_action_ids": [],
+            "status": "simulated"
+          }
+        ],
+        "created_at": "2026-10-24T22:05:15.536755Z",
+        "expires_at": "2026-10-24T22:10:15.539448Z",
+        "evidence_snapshot": {
+          "signal_id": "demo_dinner_traffic",
+          "event_id": "event_dinner_001"
+        }
+      },
+      "results": [
+        {
+          "action_id": "action_demo_dinner_traffic_message_v2",
+          "provider": "simulated_outbox",
+          "provider_mode": "mock",
+          "status": "simulated",
+          "provider_reference": "outbox:action_demo_dinner_traffic_message_v2",
+          "error_code": null,
+          "completed_at": "2026-10-24T22:05:15.541598Z"
+        }
+      ],
+      "duplicate": true
+    },
+    "after_approve": {
+      "id": "demo",
+      "scenario_id": "foundation",
+      "contacts": [
+        {
+          "id": "contact_sam",
+          "display_name": "Sam",
+          "relationship": "friend",
+          "email": "sam@example.test",
+          "beeper_chat_id": null,
+          "preferred_channel": "message",
+          "tone": "informal",
+          "auto_notify_allowed": false
+        }
+      ],
+      "events": [
+        {
+          "id": "event_dinner_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Dinner with Sam",
+          "start_at": "2026-10-25T02:00:00Z",
+          "end_at": "2026-10-25T03:30:00Z",
+          "timezone": "America/Los_Angeles",
+          "mode": "in_person",
+          "destination": "Little Serow",
+          "contact_ids": [
+            "contact_sam"
+          ],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        }
+      ],
+      "signals": [
+        {
+          "id": "demo_dinner_traffic",
+          "kind": "location_eta",
+          "source": "demo",
+          "source_mode": "mock",
+          "observed_at": "2026-10-25T01:40:00Z",
+          "flight_instance_id": null,
+          "estimated_arrival_at": null,
+          "position": null,
+          "route_duration_seconds": 3600
+        }
+      ],
+      "impacts": [
+        {
+          "id": "impact_demo_dinner_traffic",
+          "event_id": "event_dinner_001",
+          "signal_ids": [
+            "demo_dinner_traffic"
+          ],
+          "earliest_arrival_at": "2026-10-25T02:40:00Z",
+          "late_by_seconds": 2400,
+          "reason": "Earliest arrival is 7:40 PM, 40 minutes after Dinner with Sam starts",
+          "confidence": "high",
+          "evidence_times": {
+            "signal_observed_at": "2026-10-25T01:40:00Z"
+          },
+          "status": "proposed"
+        }
+      ],
+      "plans": [
+        {
+          "id": "plan_demo_dinner_traffic",
+          "version": 2,
+          "impact_id": "impact_demo_dinner_traffic",
+          "status": "completed",
+          "actions": [
+            {
+              "id": "action_demo_dinner_traffic_message_v2",
+              "type": "send_message",
+              "contact_id": "contact_sam",
+              "event_id": "event_dinner_001",
+              "message_text": "[edited] Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+              "new_start_at": "2026-10-25T02:45:00Z",
+              "new_end_at": "2026-10-25T04:15:00Z",
+              "depends_on_action_ids": [],
+              "status": "simulated"
+            }
+          ],
+          "created_at": "2026-10-24T22:05:15.536755Z",
+          "expires_at": "2026-10-24T22:10:15.539448Z",
+          "evidence_snapshot": {
+            "signal_id": "demo_dinner_traffic",
+            "event_id": "event_dinner_001"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "id": "action_demo_dinner_traffic_message_v1",
+          "type": "send_message",
+          "contact_id": "contact_sam",
+          "event_id": "event_dinner_001",
+          "message_text": "Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+          "new_start_at": "2026-10-25T02:45:00Z",
+          "new_end_at": "2026-10-25T04:15:00Z",
+          "depends_on_action_ids": [],
+          "status": "pending"
+        },
+        {
+          "id": "action_demo_dinner_traffic_message_v2",
+          "type": "send_message",
+          "contact_id": "contact_sam",
+          "event_id": "event_dinner_001",
+          "message_text": "[edited] Hey Sam, I\u2019m running about 40 minutes late. Could we move Dinner with Sam to 7:45 PM?",
+          "new_start_at": "2026-10-25T02:45:00Z",
+          "new_end_at": "2026-10-25T04:15:00Z",
+          "depends_on_action_ids": [],
+          "status": "simulated"
+        }
+      ],
+      "results": [
+        {
+          "action_id": "action_demo_dinner_traffic_message_v2",
+          "provider": "simulated_outbox",
+          "provider_mode": "mock",
+          "status": "simulated",
+          "provider_reference": "outbox:action_demo_dinner_traffic_message_v2",
+          "error_code": null,
+          "completed_at": "2026-10-24T22:05:15.541598Z"
+        }
+      ],
+      "approvals": [
+        {
+          "id": "approval_plan_demo_dinner_traffic_v2",
+          "plan_id": "plan_demo_dinner_traffic",
+          "plan_version": 2,
+          "user_id": "demo_user",
+          "approved_at": "2026-10-24T22:05:15.541447Z",
+          "approval_channel": "button"
+        }
+      ]
+    }
+  },
+  "flight": {
+    "reset": {
+      "id": "demo",
+      "scenario_id": "flight",
+      "contacts": [
+        {
+          "id": "contact_alex",
+          "display_name": "Alex",
+          "relationship": "colleague",
+          "email": "alex@example.test",
+          "beeper_chat_id": null,
+          "preferred_channel": "message",
+          "tone": "professional",
+          "auto_notify_allowed": false
+        }
+      ],
+      "events": [
+        {
+          "id": "event_meeting_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Project meeting",
+          "start_at": "2026-10-24T20:00:00Z",
+          "end_at": "2026-10-24T21:00:00Z",
+          "timezone": "America/New_York",
+          "mode": "in_person",
+          "destination": "Downtown office",
+          "contact_ids": [
+            "contact_alex"
+          ],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        },
+        {
+          "id": "event_later_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Later appointment",
+          "start_at": "2026-10-24T22:00:00Z",
+          "end_at": "2026-10-24T23:00:00Z",
+          "timezone": "America/New_York",
+          "mode": "in_person",
+          "destination": "Downtown office",
+          "contact_ids": [],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        }
+      ],
+      "signals": [],
+      "impacts": [],
+      "plans": [],
+      "actions": [],
+      "results": [],
+      "approvals": []
+    },
+    "injected": {
+      "id": "demo",
+      "scenario_id": "flight",
+      "contacts": [
+        {
+          "id": "contact_alex",
+          "display_name": "Alex",
+          "relationship": "colleague",
+          "email": "alex@example.test",
+          "beeper_chat_id": null,
+          "preferred_channel": "message",
+          "tone": "professional",
+          "auto_notify_allowed": false
+        }
+      ],
+      "events": [
+        {
+          "id": "event_meeting_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Project meeting",
+          "start_at": "2026-10-24T20:00:00Z",
+          "end_at": "2026-10-24T21:00:00Z",
+          "timezone": "America/New_York",
+          "mode": "in_person",
+          "destination": "Downtown office",
+          "contact_ids": [
+            "contact_alex"
+          ],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        },
+        {
+          "id": "event_later_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Later appointment",
+          "start_at": "2026-10-24T22:00:00Z",
+          "end_at": "2026-10-24T23:00:00Z",
+          "timezone": "America/New_York",
+          "mode": "in_person",
+          "destination": "Downtown office",
+          "contact_ids": [],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        }
+      ],
+      "signals": [
+        {
+          "id": "demo_flight_delay",
+          "kind": "flight_delay",
+          "source": "demo",
+          "source_mode": "mock",
+          "observed_at": "2026-10-24T16:00:00Z",
+          "flight_instance_id": null,
+          "estimated_arrival_at": "2026-10-24T19:45:00Z",
+          "position": null,
+          "route_duration_seconds": 2100
+        }
+      ],
+      "impacts": [
+        {
+          "id": "impact_demo_flight_delay",
+          "event_id": "event_meeting_001",
+          "signal_ids": [
+            "demo_flight_delay"
+          ],
+          "earliest_arrival_at": "2026-10-24T20:50:00Z",
+          "late_by_seconds": 3000,
+          "reason": "Earliest arrival is 4:50 PM, 50 minutes after Project meeting starts",
+          "confidence": "high",
+          "evidence_times": {
+            "signal_observed_at": "2026-10-24T16:00:00Z"
+          },
+          "status": "proposed"
+        }
+      ],
+      "plans": [
+        {
+          "id": "plan_demo_flight_delay",
+          "version": 1,
+          "impact_id": "impact_demo_flight_delay",
+          "status": "proposed",
+          "actions": [
+            {
+              "id": "action_demo_flight_delay_message_v1",
+              "type": "send_message",
+              "contact_id": "contact_alex",
+              "event_id": "event_meeting_001",
+              "message_text": "Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+              "new_start_at": "2026-10-24T21:00:00Z",
+              "new_end_at": "2026-10-24T22:00:00Z",
+              "depends_on_action_ids": [],
+              "status": "pending"
+            }
+          ],
+          "created_at": "2026-10-24T22:05:15.546351Z",
+          "expires_at": "2026-10-24T22:10:15.546351Z",
+          "evidence_snapshot": {
+            "signal_id": "demo_flight_delay",
+            "event_id": "event_meeting_001"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "id": "action_demo_flight_delay_message_v1",
+          "type": "send_message",
+          "contact_id": "contact_alex",
+          "event_id": "event_meeting_001",
+          "message_text": "Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+          "new_start_at": "2026-10-24T21:00:00Z",
+          "new_end_at": "2026-10-24T22:00:00Z",
+          "depends_on_action_ids": [],
+          "status": "pending"
+        }
+      ],
+      "results": [],
+      "approvals": []
+    },
+    "revised": {
+      "id": "plan_demo_flight_delay",
+      "version": 2,
+      "impact_id": "impact_demo_flight_delay",
+      "status": "proposed",
+      "actions": [
+        {
+          "id": "action_demo_flight_delay_message_v2",
+          "type": "send_message",
+          "contact_id": "contact_alex",
+          "event_id": "event_meeting_001",
+          "message_text": "[edited] Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+          "new_start_at": "2026-10-24T21:00:00Z",
+          "new_end_at": "2026-10-24T22:00:00Z",
+          "depends_on_action_ids": [],
+          "status": "pending"
+        }
+      ],
+      "created_at": "2026-10-24T22:05:15.546351Z",
+      "expires_at": "2026-10-24T22:10:15.548314Z",
+      "evidence_snapshot": {
+        "signal_id": "demo_flight_delay",
+        "event_id": "event_meeting_001"
+      }
+    },
+    "stale_approve": {
+      "status": 409,
+      "body": {
+        "detail": {
+          "code": "STALE_PLAN",
+          "message": "plan version changed; refresh before continuing"
+        }
+      }
+    },
+    "approved": {
+      "plan": {
+        "id": "plan_demo_flight_delay",
+        "version": 2,
+        "impact_id": "impact_demo_flight_delay",
+        "status": "completed",
+        "actions": [
+          {
+            "id": "action_demo_flight_delay_message_v2",
+            "type": "send_message",
+            "contact_id": "contact_alex",
+            "event_id": "event_meeting_001",
+            "message_text": "[edited] Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+            "new_start_at": "2026-10-24T21:00:00Z",
+            "new_end_at": "2026-10-24T22:00:00Z",
+            "depends_on_action_ids": [],
+            "status": "simulated"
+          }
+        ],
+        "created_at": "2026-10-24T22:05:15.546351Z",
+        "expires_at": "2026-10-24T22:10:15.548314Z",
+        "evidence_snapshot": {
+          "signal_id": "demo_flight_delay",
+          "event_id": "event_meeting_001"
+        }
+      },
+      "results": [
+        {
+          "action_id": "action_demo_flight_delay_message_v2",
+          "provider": "simulated_outbox",
+          "provider_mode": "mock",
+          "status": "simulated",
+          "provider_reference": "outbox:action_demo_flight_delay_message_v2",
+          "error_code": null,
+          "completed_at": "2026-10-24T22:05:15.550189Z"
+        }
+      ],
+      "duplicate": false
+    },
+    "duplicate_approve": {
+      "plan": {
+        "id": "plan_demo_flight_delay",
+        "version": 2,
+        "impact_id": "impact_demo_flight_delay",
+        "status": "completed",
+        "actions": [
+          {
+            "id": "action_demo_flight_delay_message_v2",
+            "type": "send_message",
+            "contact_id": "contact_alex",
+            "event_id": "event_meeting_001",
+            "message_text": "[edited] Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+            "new_start_at": "2026-10-24T21:00:00Z",
+            "new_end_at": "2026-10-24T22:00:00Z",
+            "depends_on_action_ids": [],
+            "status": "simulated"
+          }
+        ],
+        "created_at": "2026-10-24T22:05:15.546351Z",
+        "expires_at": "2026-10-24T22:10:15.548314Z",
+        "evidence_snapshot": {
+          "signal_id": "demo_flight_delay",
+          "event_id": "event_meeting_001"
+        }
+      },
+      "results": [
+        {
+          "action_id": "action_demo_flight_delay_message_v2",
+          "provider": "simulated_outbox",
+          "provider_mode": "mock",
+          "status": "simulated",
+          "provider_reference": "outbox:action_demo_flight_delay_message_v2",
+          "error_code": null,
+          "completed_at": "2026-10-24T22:05:15.550189Z"
+        }
+      ],
+      "duplicate": true
+    },
+    "after_approve": {
+      "id": "demo",
+      "scenario_id": "flight",
+      "contacts": [
+        {
+          "id": "contact_alex",
+          "display_name": "Alex",
+          "relationship": "colleague",
+          "email": "alex@example.test",
+          "beeper_chat_id": null,
+          "preferred_channel": "message",
+          "tone": "professional",
+          "auto_notify_allowed": false
+        }
+      ],
+      "events": [
+        {
+          "id": "event_meeting_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Project meeting",
+          "start_at": "2026-10-24T20:00:00Z",
+          "end_at": "2026-10-24T21:00:00Z",
+          "timezone": "America/New_York",
+          "mode": "in_person",
+          "destination": "Downtown office",
+          "contact_ids": [
+            "contact_alex"
+          ],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        },
+        {
+          "id": "event_later_001",
+          "provider": "fixture",
+          "provider_event_id": null,
+          "title": "Later appointment",
+          "start_at": "2026-10-24T22:00:00Z",
+          "end_at": "2026-10-24T23:00:00Z",
+          "timezone": "America/New_York",
+          "mode": "in_person",
+          "destination": "Downtown office",
+          "contact_ids": [],
+          "organizer_self": true,
+          "writable": true,
+          "provider_version": "fixture-v1"
+        }
+      ],
+      "signals": [
+        {
+          "id": "demo_flight_delay",
+          "kind": "flight_delay",
+          "source": "demo",
+          "source_mode": "mock",
+          "observed_at": "2026-10-24T16:00:00Z",
+          "flight_instance_id": null,
+          "estimated_arrival_at": "2026-10-24T19:45:00Z",
+          "position": null,
+          "route_duration_seconds": 2100
+        }
+      ],
+      "impacts": [
+        {
+          "id": "impact_demo_flight_delay",
+          "event_id": "event_meeting_001",
+          "signal_ids": [
+            "demo_flight_delay"
+          ],
+          "earliest_arrival_at": "2026-10-24T20:50:00Z",
+          "late_by_seconds": 3000,
+          "reason": "Earliest arrival is 4:50 PM, 50 minutes after Project meeting starts",
+          "confidence": "high",
+          "evidence_times": {
+            "signal_observed_at": "2026-10-24T16:00:00Z"
+          },
+          "status": "proposed"
+        }
+      ],
+      "plans": [
+        {
+          "id": "plan_demo_flight_delay",
+          "version": 2,
+          "impact_id": "impact_demo_flight_delay",
+          "status": "completed",
+          "actions": [
+            {
+              "id": "action_demo_flight_delay_message_v2",
+              "type": "send_message",
+              "contact_id": "contact_alex",
+              "event_id": "event_meeting_001",
+              "message_text": "[edited] Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+              "new_start_at": "2026-10-24T21:00:00Z",
+              "new_end_at": "2026-10-24T22:00:00Z",
+              "depends_on_action_ids": [],
+              "status": "simulated"
+            }
+          ],
+          "created_at": "2026-10-24T22:05:15.546351Z",
+          "expires_at": "2026-10-24T22:10:15.548314Z",
+          "evidence_snapshot": {
+            "signal_id": "demo_flight_delay",
+            "event_id": "event_meeting_001"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "id": "action_demo_flight_delay_message_v1",
+          "type": "send_message",
+          "contact_id": "contact_alex",
+          "event_id": "event_meeting_001",
+          "message_text": "Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+          "new_start_at": "2026-10-24T21:00:00Z",
+          "new_end_at": "2026-10-24T22:00:00Z",
+          "depends_on_action_ids": [],
+          "status": "pending"
+        },
+        {
+          "id": "action_demo_flight_delay_message_v2",
+          "type": "send_message",
+          "contact_id": "contact_alex",
+          "event_id": "event_meeting_001",
+          "message_text": "[edited] Hey Alex, I\u2019m running about 50 minutes late. Could we move Project meeting to 5:00 PM?",
+          "new_start_at": "2026-10-24T21:00:00Z",
+          "new_end_at": "2026-10-24T22:00:00Z",
+          "depends_on_action_ids": [],
+          "status": "simulated"
+        }
+      ],
+      "results": [
+        {
+          "action_id": "action_demo_flight_delay_message_v2",
+          "provider": "simulated_outbox",
+          "provider_mode": "mock",
+          "status": "simulated",
+          "provider_reference": "outbox:action_demo_flight_delay_message_v2",
+          "error_code": null,
+          "completed_at": "2026-10-24T22:05:15.550189Z"
+        }
+      ],
+      "approvals": [
+        {
+          "id": "approval_plan_demo_flight_delay_v2",
+          "plan_id": "plan_demo_flight_delay",
+          "plan_version": 2,
+          "user_id": "demo_user",
+          "approved_at": "2026-10-24T22:05:15.550084Z",
+          "approval_channel": "button"
+        }
+      ]
+    }
+  }
+}
