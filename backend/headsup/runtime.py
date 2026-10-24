@@ -30,7 +30,7 @@ from .holdline import HoldLineRunner, SimBusiness, TwilioHoldLine
 from .executor import Executor
 from .ledger import Ledger
 from .lifecycle import LifecycleService
-from .messaging import SimulatedMessaging, UnavailableMessaging
+from .messaging import BeeperMessaging, SimulatedMessaging, UnavailableMessaging, apply_chat_mappings
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
 from .telephony import Telephony
@@ -51,6 +51,7 @@ class Runtime:
         self.settings = settings
         self.log = EventLog(settings.db_path)
         self.foundation = FoundationRepository(self.log.db)
+        apply_chat_mappings(self.foundation)
         self.messaging = self._messaging_provider()
         self.lifecycle = LifecycleService(self.foundation)
         self.bus = EventBus(self.log)
@@ -124,15 +125,19 @@ class Runtime:
         )
 
     def _messaging_provider(self):
-        # Live messaging is Beeper, connected after Level A; until then "live" fails visibly.
+        # Live messaging is Beeper Desktop; without a token "live" fails visibly, never falls back.
         if self.settings.messaging_mode == "mock":
             return SimulatedMessaging(self.foundation)
         if self.settings.messaging_mode == "live":
-            return UnavailableMessaging()
+            if not self.settings.beeper_token:
+                return UnavailableMessaging("BEEPER_ACCESS_TOKEN is not set")
+            return BeeperMessaging(self.foundation, self.settings.beeper_url, self.settings.beeper_token)
         return UnavailableMessaging("MESSAGING_MODE must be mock or live")
 
     def reset_foundation(self, scenario_id: str):
         state = self.foundation.reset(scenario_id)
+        apply_chat_mappings(self.foundation)
+        state = self.foundation.session()
         if self.settings.calendar_mode == "mock":
             self.calendar = MockCalendarProvider(state.events)
         return state
@@ -156,6 +161,8 @@ class Runtime:
             await asyncio.gather(*background, return_exceptions=True)
         await asyncio.gather(*(agent.stop() for agent in self.agents.values()))
         await self.calendar.close()
+        if isinstance(self.messaging, BeeperMessaging):
+            await self.messaging.close()
 
     def _runner_tasks(self) -> list[asyncio.Task]:
         return [t for t in asyncio.all_tasks() if t.get_name().startswith("runner-")]
