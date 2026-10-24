@@ -61,6 +61,8 @@ class Settings:
         default_factory=lambda: _env_bool("GOOGLE_CALENDAR_FREEBUSY_ENABLED", False)
     )
     pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
+    # The phone (iPhone app, AirPods, Apple Watch) that is asked about new plans.
+    wearable_user: str = field(default_factory=lambda: os.getenv("HEADSUP_WEARABLE_USER", "vibhu"))
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: tuple(
             item.strip()

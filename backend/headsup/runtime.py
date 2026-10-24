@@ -32,6 +32,7 @@ from .lifecycle import LifecycleService
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
 from .telephony import Telephony
+from .wearables import WearableBridge
 from .world import World, demo_world
 from .providers.calendar import (
     FREEBUSY_SCOPE,
@@ -97,6 +98,7 @@ class Runtime:
         self.verifier = Verifier(self)
         self.concierge = Concierge(self)
         self.timekeeper = Timekeeper(self)
+        self.wearables = WearableBridge(self)
         self.agents: dict[str, Agent] = {a.name: a for a in (
             self.flight_watcher, self.triage, self.extractor, self.concierge, self.timekeeper,
             self.supervisor, self.doctor)}
@@ -157,7 +159,7 @@ class Runtime:
         await self.calendar.close()
 
     def _runner_tasks(self) -> list[asyncio.Task]:
-        return [t for t in asyncio.all_tasks() if t.get_name().startswith("runner-")]
+        return [t for t in asyncio.all_tasks() if t.get_name().startswith(("runner-", "wearable-"))]
 
     async def restart_agent(self, name: str) -> None:
         agent = self.agents[name]
