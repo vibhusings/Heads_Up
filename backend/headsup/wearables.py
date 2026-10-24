@@ -116,7 +116,7 @@ class WearableBridge:
         channel = CHANNEL_BY_VIA.get(via, via)
         try:
             if value == "yes":
-                outcome = lifecycle.approve(plan_id, version, self.user, channel)
+                queued = lifecycle.approve(plan_id, version, self.user, channel)  # durable approval, queued
             elif value == "no":
                 rejected = lifecycle.reject(plan_id, version)
             else:
@@ -124,6 +124,11 @@ class WearableBridge:
         except LifecycleError as err:
             await self._refused(plan_id, version, err)
             return None
+        if value == "yes":
+            # The executor is the only layer that sends; it also resumes this after a restart.
+            plan = await self.rt.executor.run_plan(plan_id)
+            results = self.rt.foundation.results_for_actions([a.id for a in plan.actions])
+            outcome = ExecutionOutcome(plan=plan, results=results, duplicate=queued.duplicate)
 
         if value == "no":
             bus.publish("wearable.rejected", {"plan_id": plan_id, "version": version, "via": via},

@@ -27,8 +27,10 @@ from .doctor import Doctor
 from .db import FoundationRepository
 from .events import EventBus, EventLog
 from .holdline import HoldLineRunner, SimBusiness, TwilioHoldLine
+from .executor import Executor
 from .ledger import Ledger
 from .lifecycle import LifecycleService
+from .messaging import SimulatedMessaging, UnavailableMessaging
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
 from .telephony import Telephony
@@ -43,7 +45,6 @@ from .providers.calendar import (
     MockCalendarProvider,
     UnavailableCalendarProvider,
 )
-from .providers.messaging import MockMessagingProvider, UnavailableMessagingProvider
 
 
 class Runtime:
@@ -52,7 +53,7 @@ class Runtime:
         self.log = EventLog(settings.db_path)
         self.foundation = FoundationRepository(self.log.db)
         self.messaging = self._messaging_provider()
-        self.lifecycle = LifecycleService(self.foundation, self.messaging)
+        self.lifecycle = LifecycleService(self.foundation)
         self.bus = EventBus(self.log)
         self.ledger = Ledger(settings.daily_budget_usd)
         self.brain = Brain(settings, self.ledger, self.bus)
@@ -77,6 +78,7 @@ class Runtime:
         self.clock = Clock()
         self.devices.today = self.clock.today
         self.calendar = self._calendar_provider()
+        self.executor = Executor(self.foundation, self.messaging, lambda: self.calendar)
 
         # Shared state.
         self.tasks: dict[str, Task] = {}
@@ -124,24 +126,23 @@ class Runtime:
         )
 
     def _messaging_provider(self):
+        # Live messaging is Beeper, connected after Level A; until then "live" fails visibly.
         if self.settings.messaging_mode == "mock":
-            return MockMessagingProvider()
+            return SimulatedMessaging(self.foundation)
         if self.settings.messaging_mode == "live":
-            return UnavailableMessagingProvider()
-        return UnavailableMessagingProvider("MESSAGING_MODE must be mock or live")
+            return UnavailableMessaging()
+        return UnavailableMessaging("MESSAGING_MODE must be mock or live")
 
     def reset_foundation(self, scenario_id: str):
         state = self.foundation.reset(scenario_id)
         if self.settings.calendar_mode == "mock":
             self.calendar = MockCalendarProvider(state.events)
-        if isinstance(self.messaging, MockMessagingProvider):
-            self.messaging.reset()
         return state
 
     # ---- lifecycle ----
 
     async def start(self) -> None:
-        recovered = self.lifecycle.resume_pending()
+        recovered = await self.executor.resume()  # finish work approved before a restart
         for agent in self.agents.values():
             agent.start()
         self._bg.append(asyncio.create_task(self._guardian()))

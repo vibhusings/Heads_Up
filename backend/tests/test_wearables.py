@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from headsup import server
-from headsup.providers.messaging import UnavailableMessagingProvider
+from headsup.messaging import UnavailableMessaging
 
 DINNER_LATE = {"id": "late_1", "kind": "location_eta", "source": "manual", "source_mode": "mock",
                "observed_at": "2026-10-25T01:40:00Z", "route_duration_seconds": 3600}
@@ -141,7 +141,7 @@ def test_button_approval_stops_the_wearable_question(client):
 
 
 def test_failed_send_gives_the_long_buzz(client, monkeypatch):
-    monkeypatch.setattr(rt(client).lifecycle, "messaging", UnavailableMessagingProvider())  # live send fails
+    monkeypatch.setattr(rt(client).executor, "messaging", UnavailableMessaging())  # live send fails
     client.post("/api/signals", json=DINNER_LATE)
     asked(client)
     answer(client, "yes", "nod")

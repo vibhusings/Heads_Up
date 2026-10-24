@@ -27,12 +27,14 @@ from .chaos import FAULTS
 from .config import settings
 from .engine import process
 from .lifecycle import LifecycleError
+from .messaging import outbox
 from .models import (
     ActionResult,
     ExecutionOutcome,
     Health,
     LocationInput,
     LocationResult,
+    OutboxEntry,
     Plan,
     PlanCommand,
     PlanPatch,
@@ -177,11 +179,14 @@ async def api_plan_patch(plan_id: str, body: PlanPatch, request: Request):
 async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
     rt = rt_of(request)
     try:
-        outcome = rt.lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
+        queued = rt.lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
     rt.wearables.cancel(plan_id)  # decided elsewhere: stop asking on the wearables
-    return outcome
+    # The approval is already durable; if this request dies here, the executor resumes on restart.
+    plan = await rt.executor.run_plan(plan_id)
+    results = rt.foundation.results_for_actions([action.id for action in plan.actions])
+    return ExecutionOutcome(plan=plan, results=results, duplicate=queued.duplicate)
 
 
 @app.post("/api/plans/{plan_id}/reject", response_model=Plan)
@@ -198,6 +203,11 @@ async def api_plan_reject(plan_id: str, body: PlanCommand, request: Request):
 @app.get("/api/actions", response_model=list[ActionResult])
 async def api_actions(request: Request):
     return rt_of(request).foundation.session().results
+
+
+@app.get("/api/outbox", response_model=list[OutboxEntry])
+async def api_outbox(request: Request):
+    return outbox(rt_of(request).foundation)
 
 
 # ---------- device ----------
