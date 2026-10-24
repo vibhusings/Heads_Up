@@ -144,7 +144,7 @@ async def test_disconnected_live_provider_shows_failed_never_sent(repo):
     plan = await executor_for(repo, messaging=UnavailableMessaging()).run_plan("plan")
     [result] = repo.session().results
     assert (plan.status, result.status, result.provider_mode) == ("failed", "failed", "live")
-    assert result.error_code == "PROVIDER_UNAVAILABLE"
+    assert result.error_code == "AUTH_REQUIRED"
 
 
 async def test_send_timeout_is_unknown_and_never_retried(repo):
@@ -276,4 +276,4 @@ def test_api_live_messaging_without_beeper_is_degraded(tmp_path, monkeypatch):
     with TestClient(app) as client:
         health = client.get("/api/health").json()
         assert health["status"] == "degraded"
-        assert health["providers"]["messaging"]["error_code"] == "PROVIDER_UNAVAILABLE"
+        assert health["providers"]["messaging"]["error_code"] == "AUTH_REQUIRED"

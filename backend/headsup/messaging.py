@@ -92,14 +92,13 @@ class UnavailableMessaging:
         self.reason = reason
 
     async def send_message(self, action_key: str, contact_id: str, chat_id: str, text: str) -> SendResult:
-        return SendResult(status="failed", error_code="PROVIDER_UNAVAILABLE", retry_safe=True)
+        return SendResult(status="failed", error_code="AUTH_REQUIRED")
 
     async def reconcile(self, action_key: str) -> SendResult | None:
         return None
 
     def health(self) -> dict[str, Any]:
-        return {"mode": self.mode, "status": "unavailable", "error_code": "PROVIDER_UNAVAILABLE",
-                "message": self.reason}
+        return {"mode": self.mode, "status": "unavailable", "error_code": "AUTH_REQUIRED"}
 
 
 def outbox(repository: FoundationRepository) -> list[OutboxEntry]:

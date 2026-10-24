@@ -94,7 +94,7 @@ class Executor:
             return self._record(action, "executor", "skipped", error_code="DEPENDENCY_FAILED")
 
         key = action_key(plan, action)
-        if self._attempt_started(key):
+        if self._attempt_started(key) or action.status == "executing":
             return await self._recover(action, key)
 
         try:
@@ -154,9 +154,12 @@ class Executor:
 
     async def _recover(self, action: Action, key: str) -> ActionResult:
         """An earlier run claimed this action and stopped before recording a result."""
-        provider = self.repository.db.execute(
+        row = self.repository.db.execute(
             "SELECT provider FROM action_attempts WHERE action_key = ?", (key,)
-        ).fetchone()[0]
+        ).fetchone()
+        if row is None:  # marked executing without an attempt row: still never resend
+            return self._record(action, "executor", "unknown", error_code="OUTCOME_UNKNOWN")
+        provider = row[0]
         found = await self.messaging.reconcile(key) if provider == self.messaging.name else None
         if found is not None:
             return self._record(action, provider, found.status, found.provider_reference, None, key)

@@ -42,3 +42,8 @@ Mock results are recorded as `simulated`, never `succeeded`. Timeouts are `unkno
 
 `contracts/fixtures/foundation.json` covers location lateness;
 `contracts/fixtures/flight.json` covers the delayed-flight meeting scenario.
+
+`messaging.MessagingProvider.send_message(action_key, contact_id, chat_id, text)` is
+the provider boundary. `MESSAGING_MODE=mock` is the default; selecting unconfigured
+live mode returns a truthful `AUTH_REQUIRED` failure and never falls back to the
+simulated outbox.
