@@ -83,7 +83,7 @@ async def api_health(request: Request):
         providers={
             "calendar": calendar,
             "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
-            "phone_pairing": {"mode": "live", "status": "configured" if rt.settings.pairing_token else "disabled"},
+            "phone_pairing": {"mode": "live", "status": rt.pairing.status()},
             "voice": {"mode": "live", "status": "configured" if rt.settings.vapi_webhook_secret else "disabled"},
         },
     )
@@ -111,6 +111,28 @@ async def api_signals(body: Signal, request: Request):
     return rt_of(request).foundation.ingest_signal(body, process)
 
 
+# Requests relayed by a tunnel or proxy carry these; a pairing must start on this machine.
+FORWARDED_HEADERS = ("cf-connecting-ip", "x-forwarded-for", "forwarded", "x-real-ip")
+
+
+def from_this_machine(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    return host in {"127.0.0.1", "::1", "localhost"} and not any(h in request.headers for h in FORWARDED_HEADERS)
+
+
+class PairingResult(BaseModel):
+    token: str
+    expires_at: datetime
+
+
+@app.post("/api/pairing", response_model=PairingResult)
+async def api_pairing(request: Request):
+    if not from_this_machine(request):
+        raise HTTPException(403, detail={"code": "LOCAL_ONLY", "message": "pair from the desktop screen"})
+    token, expires_at = rt_of(request).pairing.mint()
+    return PairingResult(token=token, expires_at=expires_at)
+
+
 @app.post("/api/location", response_model=LocationResult)
 async def api_location(
     body: LocationInput,
@@ -118,8 +140,7 @@ async def api_location(
     pairing_token: str | None = Header(default=None, alias="X-Pairing-Token"),
 ):
     rt = rt_of(request)
-    expected = rt.settings.pairing_token
-    if not expected or not pairing_token or not secrets.compare_digest(pairing_token, expected):
+    if not rt.pairing.valid(pairing_token):
         raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "valid pairing token required"})
     age = (datetime.now(timezone.utc) - body.captured_at).total_seconds()
     if age > 120 or age < -30:

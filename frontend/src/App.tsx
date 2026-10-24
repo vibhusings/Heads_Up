@@ -1,6 +1,7 @@
 import { ActionHistory } from "./components/ActionHistory";
 import { DemoControls } from "./components/DemoControls";
 import { ImpactCard } from "./components/ImpactCard";
+import { PairingCard } from "./components/PairingCard";
 import { ProposalCard } from "./components/ProposalCard";
 import { Timeline } from "./components/Timeline";
 import { VoicePanel } from "./components/VoicePanel";
@@ -43,6 +44,7 @@ export default function App() {
                 onChanged={refresh}
               />
             )}
+            <PairingCard signals={session.signals} />
             <ActionHistory results={session.results} actions={session.actions} contacts={session.contacts} />
           </div>
         </main>

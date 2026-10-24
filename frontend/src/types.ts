@@ -155,4 +155,23 @@ export interface Health {
   providers: Record<string, { mode?: string; status?: string; [key: string]: unknown }>;
 }
 
+export interface LocationInput {
+  latitude: number;
+  longitude: number;
+  accuracy_meters: number;
+  captured_at: ISODateTime;
+  route_duration_seconds?: number | null;
+}
+
+export interface LocationResult {
+  status: "accepted" | "uncertain" | "stale";
+  signal: SignalResult | null;
+  error_code: string | null;
+}
+
+export interface PairingResult {
+  token: string;
+  expires_at: ISODateTime;
+}
+
 export type DemoScenario = "dinner" | "flight";

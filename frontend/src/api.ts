@@ -6,6 +6,9 @@ import type {
   DemoScenario,
   ExecutionOutcome,
   Health,
+  LocationInput,
+  LocationResult,
+  PairingResult,
   Plan,
   PlanPatch,
   SessionState,
@@ -40,16 +43,18 @@ export interface Api {
   revisePlan(planId: string, patch: PlanPatch): Promise<Plan>;
   approvePlan(planId: string, expectedVersion: number): Promise<ExecutionOutcome>;
   rejectPlan(planId: string, expectedVersion: number): Promise<Plan>;
+  pairPhone(): Promise<PairingResult>;
+  postLocation(token: string, sample: LocationInput): Promise<LocationResult>;
 }
 
 export const DEMOS = demoSignals as Record<DemoScenario, { scenario_id: string; signal: Signal }>;
 
 // ---------- real backend ----------
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
   const response = await fetch(BASE + path, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: body === undefined ? headers : { "Content-Type": "application/json", ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const payload = await response.json().catch(() => null);
@@ -73,6 +78,8 @@ const realApi: Api = {
     request("POST", `/api/plans/${encodeURIComponent(planId)}/approve`, { expected_version: expectedVersion }),
   rejectPlan: (planId, expectedVersion) =>
     request("POST", `/api/plans/${encodeURIComponent(planId)}/reject`, { expected_version: expectedVersion }),
+  pairPhone: () => request("POST", "/api/pairing"),
+  postLocation: (token, sample) => request("POST", "/api/location", sample, { "X-Pairing-Token": token }),
 };
 
 // ---------- mock: replays captured backend responses ----------
@@ -182,6 +189,15 @@ function mockApi(): Api {
       const rejected: Plan = { ...plan, status: "rejected" };
       replacePlan(rejected);
       return clone(rejected);
+    },
+    async pairPhone() {
+      return { token: "mock-pairing-token", expires_at: new Date(Date.now() + 3600_000).toISOString() };
+    },
+    async postLocation(token, sample) {
+      if (token !== "mock-pairing-token") throw new ApiError(401, "AUTH_REQUIRED", "valid pairing token required");
+      const age = (Date.now() - Date.parse(sample.captured_at)) / 1000;
+      if (age > 120) return { status: "stale", signal: null, error_code: "STALE_LOCATION" };
+      return { status: sample.accuracy_meters > 200 ? "uncertain" : "accepted", signal: null, error_code: null };
     },
   };
 }

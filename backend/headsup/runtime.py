@@ -29,6 +29,7 @@ from .events import EventBus, EventLog
 from .holdline import HoldLineRunner, SimBusiness, TwilioHoldLine
 from .ledger import Ledger
 from .lifecycle import LifecycleService
+from .pairing import PairingStore
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
 from .telephony import Telephony
@@ -50,6 +51,7 @@ class Runtime:
         self.log = EventLog(settings.db_path)
         self.foundation = FoundationRepository(self.log.db)
         self.lifecycle = LifecycleService(self.foundation)
+        self.pairing = PairingStore(settings.pairing_token)
         self.bus = EventBus(self.log)
         self.ledger = Ledger(settings.daily_budget_usd)
         self.brain = Brain(settings, self.ledger, self.bus)

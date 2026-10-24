@@ -105,3 +105,13 @@ button.danger { color: var(--danger); border-color: var(--danger); }
 blockquote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--border); }
 
 .transcript { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+
+.phone { max-width: 480px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; color: var(--text); }
+.phone h1 { font-size: 20px; margin: 0; }
+.phone .buttons button { font-size: 18px; padding: 12px 20px; flex: 1; }
+.phone-status { font-size: 22px; font-weight: 700; padding: 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); }
+.phone-status.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.phone-status.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.phone-status.danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+.qr { display: block; width: 180px; height: 180px; background: white; padding: 8px; border-radius: 8px; }
+input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }

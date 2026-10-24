@@ -41,3 +41,20 @@ assistants, so the assistant must be saved in the Vapi dashboard).
 
 Voice tools refuse recipient fields, run message edits through the existing
 `Guard`, and approve only the `expected_version` the assistant read back.
+
+## Phone location page
+
+`phone.html` watches `navigator.geolocation` and posts fixes to `POST /api/location`
+every 10 s, showing whether the latest fix is fresh, stale (> 2 min) or low accuracy
+(> 200 m), plus the server's verdict.
+
+1. Phones only share location with HTTPS pages, so tunnel the Vite server:
+   `cloudflared tunnel --url http://localhost:5173`.
+2. On the desktop (http://localhost:5173), put the tunnel URL in **Phone page address**
+   (or set `VITE_PHONE_ORIGIN`) and click **Pair phone**.
+3. Scan the QR code, tap **Share location**, and allow location access.
+
+Pairing codes come from `POST /api/pairing`, which only answers requests made on
+this machine (not through a tunnel). A code lasts 60 minutes, lives in backend
+memory, and minting a new one unpairs the previous phone. The token travels in the
+URL fragment, so it never reaches server logs.
