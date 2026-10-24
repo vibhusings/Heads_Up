@@ -159,6 +159,20 @@ class SignalResult(Contract):
     plan_ids: list[str]
 
 
+class LocationInput(Contract):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_meters: float = Field(ge=0)
+    captured_at: AwareDatetime
+    route_duration_seconds: int | None = Field(default=None, ge=0)
+
+
+class LocationResult(Contract):
+    status: Literal["accepted", "uncertain", "stale"]
+    signal: SignalResult | None = None
+    error_code: str | None = None
+
+
 class PlanPatch(Contract):
     expected_version: int = Field(ge=1)
     message_text: str | None = Field(default=None, min_length=1)

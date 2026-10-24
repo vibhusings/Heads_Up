@@ -58,6 +58,8 @@ by another organizer.
 | `HEADSUP_PUBLIC_URL` | unset | Public https URL of this server that Twilio can reach (e.g. an ngrok tunnel) |
 | `DEEPGRAM_API_KEY` | unset | Live transcription of calls; without it calls connect but aren't transcribed |
 | `HEADSUP_RECEIPT_AT` | `21:30` | When the end-of-day receipt plays |
+| `HEADSUP_PAIRING_TOKEN` | unset | Required `X-Pairing-Token` value for `/api/location` |
+| `HEADSUP_CORS_ORIGINS` | local Vite origins | Comma-separated frontend origins allowed to call `/api` |
 
 Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on another model automatically.
 

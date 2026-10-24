@@ -59,6 +59,14 @@ class Settings:
     google_calendar_freebusy_enabled: bool = field(
         default_factory=lambda: _env_bool("GOOGLE_CALENDAR_FREEBUSY_ENABLED", False)
     )
+    pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
+    cors_origins: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            item.strip()
+            for item in os.getenv("HEADSUP_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+            if item.strip()
+        )
+    )
 
     # Optional real integrations. Each one falls back to its simulator when unset.
     aviationstack_key: str | None = field(default_factory=lambda: os.getenv("AVIATIONSTACK_KEY"))

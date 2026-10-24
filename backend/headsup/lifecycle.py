@@ -75,7 +75,7 @@ class LifecycleService:
             plan = self.get_plan(plan_id)
             self._require_version(plan, expected_version)
             previous = self.repository.results_for_actions([action.id for action in plan.actions])
-            if plan.status == "completed" and len(previous) == len(plan.actions):
+            if plan.status in {"completed", "partially_failed", "failed"} and len(previous) == len(plan.actions):
                 return ExecutionOutcome(plan=plan, results=previous, duplicate=True)
             if plan.status != "proposed":
                 raise LifecycleError("INVALID_STATE", "only a proposed plan can be approved")
@@ -95,9 +95,24 @@ class LifecycleService:
             self.repository.put("approvals", approval)
             results: list[ActionResult] = []
             completed_actions: list[Action] = []
-            failed = False
+            by_action: dict[str, ActionResult] = {}
             for action in plan.actions:
-                if action.type == "send_message" and (not action.contact_id or not action.message_text):
+                blocked = any(
+                    dependency not in by_action
+                    or by_action[dependency].status in {"failed", "unknown", "skipped"}
+                    for dependency in action.depends_on_action_ids
+                )
+                if blocked:
+                    result = ActionResult(
+                        action_id=action.id,
+                        provider="executor",
+                        provider_mode="mock",
+                        status="skipped",
+                        error_code="DEPENDENCY_FAILED",
+                        completed_at=datetime.now(timezone.utc),
+                    )
+                    completed_actions.append(action.model_copy(update={"status": "skipped"}))
+                elif action.type == "send_message" and (not action.contact_id or not action.message_text):
                     result = ActionResult(
                         action_id=action.id,
                         provider="simulated_outbox",
@@ -107,11 +122,11 @@ class LifecycleService:
                         completed_at=datetime.now(timezone.utc),
                     )
                     completed_actions.append(action.model_copy(update={"status": "failed"}))
-                    failed = True
                 else:
+                    provider = "simulated_outbox" if action.type == "send_message" else "simulated_calendar"
                     result = ActionResult(
                         action_id=action.id,
-                        provider="simulated_outbox",
+                        provider=provider,
                         provider_mode="mock",
                         status="simulated",
                         provider_reference=f"outbox:{action.id}",
@@ -120,8 +135,12 @@ class LifecycleService:
                     completed_actions.append(action.model_copy(update={"status": "simulated"}))
                 self.repository.put("action_results", result)
                 results.append(result)
+                by_action[action.id] = result
+            successful = sum(result.status in {"succeeded", "simulated"} for result in results)
+            failed = len(results) - successful
+            status = "completed" if not failed else ("partially_failed" if successful else "failed")
             completed = plan.model_copy(
-                update={"status": "failed" if failed else "completed", "actions": completed_actions}
+                update={"status": status, "actions": completed_actions}
             )
             self.repository.put_plan(completed)
             return ExecutionOutcome(plan=completed, results=results, duplicate=False)

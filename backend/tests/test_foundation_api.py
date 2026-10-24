@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import sqlite3
 
 import pytest
@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from headsup.db import FoundationRepository
+from headsup.engine import process
 from headsup.models import Event, Signal
 from headsup.server import app, settings
 
@@ -49,6 +50,26 @@ def test_repository_reset_and_restart_persistence(tmp_path):
     assert reset.signals == []
     assert reset.events[0].provider == "fixture"
     second_db.close()
+
+
+def test_flight_fixture_is_ready_for_the_second_demo_scenario(tmp_path):
+    db = sqlite3.connect(tmp_path / "flight.db")
+    repository = FoundationRepository(db)
+    state = repository.reset("flight")
+    assert [event.id for event in state.events] == ["event_meeting_001", "event_later_001"]
+    flight = Signal(
+        id="flight_demo",
+        kind="flight_delay",
+        source="fixture",
+        source_mode="mock",
+        observed_at=datetime(2026, 10, 24, 16, tzinfo=timezone.utc),
+        estimated_arrival_at=datetime(2026, 10, 24, 19, 45, tzinfo=timezone.utc),
+        route_duration_seconds=35 * 60,
+    )
+    result = repository.ingest_signal(flight, process)
+    assert result.impact_ids == ["impact_flight_demo"]
+    assert repository.session().impacts[0].late_by_seconds == 50 * 60
+    db.close()
 
 
 def test_foundation_api_health_session_reset_and_idempotent_signal(tmp_path, monkeypatch):
@@ -118,3 +139,52 @@ def test_complete_level_a_flow_persists_and_does_not_duplicate_execution(tmp_pat
         session = client.get("/api/session").json()
         assert session["plans"][0]["status"] == "completed"
         assert len(session["results"]) == 1
+
+
+def test_location_requires_pairing_and_rejects_stale_samples(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "db_path", str(tmp_path / "location.db"))
+    monkeypatch.setattr(settings, "offline", True)
+    monkeypatch.setattr(settings, "calendar_mode", "mock")
+    monkeypatch.setattr(settings, "pairing_token", "paired")
+    fresh = datetime.now(timezone.utc)
+    payload = {
+        "latitude": 38.9,
+        "longitude": -77.0,
+        "accuracy_meters": 20,
+        "captured_at": fresh.isoformat(),
+    }
+
+    with TestClient(app) as client:
+        assert client.post("/api/location", json=payload).status_code == 401
+        accepted = client.post("/api/location", json=payload, headers={"X-Pairing-Token": "paired"})
+        assert accepted.status_code == 200
+        assert accepted.json()["status"] == "accepted"
+
+        stale = payload | {"captured_at": (fresh - timedelta(minutes=3)).isoformat()}
+        response = client.post("/api/location", json=stale, headers={"X-Pairing-Token": "paired"})
+        assert response.json() == {"status": "stale", "signal": None, "error_code": "STALE_LOCATION"}
+
+        uncertain = payload | {"accuracy_meters": 500, "captured_at": datetime.now(timezone.utc).isoformat()}
+        response = client.post("/api/location", json=uncertain, headers={"X-Pairing-Token": "paired"})
+        assert response.json()["status"] == "uncertain"
+
+
+def test_rejection_never_executes_and_frontend_origin_is_allowed(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "db_path", str(tmp_path / "reject.db"))
+    monkeypatch.setattr(settings, "offline", True)
+    monkeypatch.setattr(settings, "calendar_mode", "mock")
+    with TestClient(app) as client:
+        created = client.post("/api/signals", json=signal("reject").model_dump(mode="json")).json()
+        plan_id = created["plan_ids"][0]
+        rejected = client.post(f"/api/plans/{plan_id}/reject", json={"expected_version": 1})
+        assert rejected.status_code == 200
+        assert rejected.json()["status"] == "rejected"
+        assert client.post(f"/api/plans/{plan_id}/approve", json={"expected_version": 1}).status_code == 409
+        assert client.get("/api/actions").json() == []
+
+        preflight = client.options(
+            "/api/signals",
+            headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "POST"},
+        )
+        assert preflight.status_code == 200
+        assert preflight.headers["access-control-allow-origin"] == "http://localhost:5173"
