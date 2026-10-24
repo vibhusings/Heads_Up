@@ -9,3 +9,4 @@ ios/**/*.ppn
 xcuserdata/
 google-calendar-token*.json
 client_secret*.json
+.env.local
