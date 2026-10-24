@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heads Up Control</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --quiet: #6b6a65; --rule: #e3e1db;
+    --accent: #2f6fdb; --good: #1f8a4c; --warn: #b7791f; --bad: #c2412d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --quiet: #a09f98; --rule: #33322f;
+      --accent: #6c9cf0; --good: #4cc37f; --warn: #e0a84a; --bad: #ef7a63;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; padding: 16px; border-bottom: 1px solid var(--rule); }
+  h1 { font-size: 18px; margin: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--quiet); margin: 0 0 8px; }
+  .stat { color: var(--quiet); } .stat b { color: var(--ink); }
+  main { display: grid; grid-template-columns: 320px 1fr 360px; gap: 16px; padding: 16px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+  button { font: inherit; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 6px 10px; cursor: pointer; margin: 2px 4px 2px 0; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--bad); color: #fff; border-color: var(--bad); }
+  input { font: inherit; width: 64px; padding: 5px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; }
+  .task { border-top: 1px solid var(--rule); padding: 8px 0; }
+  .steps { display: flex; gap: 4px; margin: 6px 0; flex-wrap: wrap; }
+  .step { font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--rule); color: var(--quiet); }
+  .step.done { background: var(--good); color: #fff; border-color: var(--good); }
+  .state-done { color: var(--good); } .state-escalated, .state-stopped { color: var(--bad); } .state-running, .state-waiting_user { color: var(--accent); }
+  #feed { font: 12px/1.5 ui-monospace, Menlo, monospace; max-height: 75vh; overflow-y: auto; }
+  .ev { padding: 3px 0; border-bottom: 1px dashed var(--rule); overflow-wrap: anywhere; }
+  .ev .k { font-weight: 600; }
+  .ev.alert .k { color: var(--bad); } .ev.repair .k { color: var(--warn); } .ev.good .k { color: var(--good); } .ev.device .k { color: var(--accent); }
+  .device { border: 1px solid var(--rule); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+  .device .said { min-height: 2.8em; color: var(--quiet); }
+  .buzz { font-weight: 600; color: var(--accent); min-height: 1.4em; }
+  .meter { height: 8px; background: var(--rule); border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  .meter div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  .playbook li { font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Heads Up · control room</h1>
+  <span class="stat">mode <b id="mode">…</b></span>
+  <span class="stat">flight feed <b id="source">…</b></span>
+  <span class="stat">models <b id="degraded">…</b></span>
+  <span class="stat" style="min-width:200px">spend <b id="spend">…</b><div class="meter"><div id="meterbar"></div></div></span>
+</header>
+<main>
+  <div>
+    <section>
+      <h2>Drive the demo</h2>
+      <div class="row">Flight delay <input id="delay" type="number" value="90"> min <button onclick="post('/sim/flight-delay',{minutes:+delay.value})">Set</button></div>
+      <div class="row"><button onclick="post('/sim/calendar/demo')">Sync demo calendar</button><button onclick="simCall()">Play the dinner call</button></div>
+      <div class="row">Clock <input id="clock" value="18:18" style="width:72px"> <button onclick="post('/sim/clock',{time:clock.value,speed:60})">Run at 60x</button></div>
+      <div class="row"><button onclick="post('/sim/receipt')">End-of-day receipt</button><button onclick="post('/sim/wake',{transcript:'call Sam'})">"Call Sam"</button></div>
+      <div class="row"><button onclick="post('/sim/wake',{transcript:'call United and get me rebooked'})">"Call United and get me rebooked"</button></div>
+      <div class="row"><button onclick="post('/sim/context',{user:'vibhu',airpods_in:true})">AirPods in</button><button onclick="post('/sim/context',{user:'vibhu',airpods_in:false})">AirPods out</button><button onclick="post('/sim/context',{user:'vibhu',in_meeting:true})">In meeting</button><button onclick="post('/sim/context',{user:'vibhu',in_meeting:false})">Free</button></div>
+    </section>
+    <section>
+      <h2>Chaos mode</h2>
+      <div id="chaos"></div>
+    </section>
+    <section>
+      <h2>Virtual devices</h2>
+      <div class="device" id="dev-vibhu"><b>Vibhu</b><div class="buzz"></div><div class="said"></div>
+        <button onclick="answer('vibhu','yes','nod')">Nod</button><button onclick="answer('vibhu','no','shake')">Shake</button></div>
+      <div class="device" id="dev-sam"><b>Sam</b><div class="buzz"></div><div class="said"></div>
+        <button onclick="answer('sam','yes','nod')">Nod</button><button onclick="answer('sam','no','shake')">Shake</button></div>
+    </section>
+  </div>
+  <div>
+    <section><h2>Tasks</h2><div id="tasks"><span class="stat">No tasks yet. Set a flight delay to start.</span></div></section>
+    <section><h2>Playbook (fixes the system has learned)</h2><ul class="playbook" id="playbook"></ul></section>
+  </div>
+  <section><h2>Live event log</h2><div id="feed"></div></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const PATTERN = { handled: 'one soft tap', decision: 'two taps', leave_now: 'rising pulses', urgent: 'LONG BUZZ' };
+
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  if (!r.ok) console.warn(url, await r.text());
+  refresh();
+}
+const answer = (user, value, via) => post('/sim/answer', { user, value, via });
+const simCall = () => post('/sim/call', { user: 'vibhu', other: 'Sam', lines: [
+  { speaker: 'vibhu', text: "Let's do Thai Chef near Dupont, Friday at 7." },
+  { speaker: 'Sam', text: 'Perfect. Heads Up, send me the address.' },
+  { speaker: 'vibhu', text: "Great, I'll bring the board game." } ] });
+
+async function toggleChaos(name, on) { await fetch(`/chaos/${name}?on=${on}`, { method: 'POST' }); refresh(); }
+
+async function refresh() {
+  const s = await (await fetch('/state')).json();
+  $('mode').textContent = s.offline ? 'offline (heuristics)' : 'live models';
+  $('source').textContent = s.flight_source;
+  $('degraded').textContent = s.degraded ? 'degraded to fast model' : 'normal';
+  $('spend').textContent = `$${s.spend.total_usd.toFixed(3)} of $${s.spend.budget_usd.toFixed(2)}`;
+  $('meterbar').style.width = Math.min(100, 100 * s.spend.total_usd / s.spend.budget_usd) + '%';
+  const faults = await (await fetch('/chaos')).json();
+  $('chaos').innerHTML = Object.entries(faults).map(([k, v]) =>
+    `<button class="${s.chaos[k] ? 'on' : ''}" title="${v}" onclick="toggleChaos('${k}', ${!s.chaos[k]})">${k.replaceAll('_', ' ')}</button>`).join('');
+  $('tasks').innerHTML = s.tasks.length ? s.tasks.slice().reverse().map(t => `
+    <div class="task"><b>${t.goal}</b> <span class="state-${t.state}">${t.state}</span>
+      <div class="steps">${t.milestones.map(m => `<span class="step ${t.reached.includes(m) ? 'done' : ''}">${m}</span>`).join('')}</div>
+      <span class="stat">${t.id} · $${t.spent_usd.toFixed(3)} · repairs: ${t.repairs.join(', ') || 'none'}</span></div>`).join('')
+    : '<span class="stat">No tasks yet. Set a flight delay to start.</span>';
+  $('playbook').innerHTML = s.playbook.map(p => `<li><b>${p.signature}</b> → ${p.repair} (${p.wins}×)</li>`).join('') || '<li class="stat">Nothing learned yet.</li>';
+}
+
+function classify(k) {
+  if (k.startsWith('supervisor') || k === 'security.injection' || k.includes('escalat') || k === 'agent.crashed') return 'alert';
+  if (k.startsWith('doctor') || k.startsWith('system.degraded') || k.startsWith('watch.source')) return 'repair';
+  if (k === 'task.done' || k === 'task.verified' || k.endsWith('accept')) return 'good';
+  if (k.startsWith('device') || k.startsWith('call.user')) return 'device';
+  return '';
+}
+
+const es = new EventSource('/events');
+es.onmessage = msg => {
+  const e = JSON.parse(msg.data);
+  if (e.kind === 'spend' || e.kind === 'watch.error' && Math.random() > .2) return;  // keep the log readable
+  const d = document.createElement('div');
+  d.className = 'ev ' + classify(e.kind);
+  const t = new Date(e.ts * 1000).toLocaleTimeString();
+  d.innerHTML = `<span class="stat">${t}</span> <span class="k">${e.kind}</span> ${e.user ? '@' + e.user : ''} ${e.task_id ? '[' + e.task_id + ']' : ''} <span class="stat">${JSON.stringify(e.data)}</span>`;
+  $('feed').prepend(d);
+  if (e.kind === 'device.out' && e.user) {
+    const dev = $('dev-' + e.user);
+    if (dev && e.data.pattern) { dev.querySelector('.buzz').textContent = 'watch: ' + PATTERN[e.data.pattern]; }
+    if (dev && e.data.text) { dev.querySelector('.said').textContent = (e.data.channel === 'call' ? 'phone: ' : 'ear: ') + e.data.text; }
+  }
+  if (e.kind === 'call.user' && $('dev-' + e.user)) $('dev-' + e.user).querySelector('.buzz').textContent = 'phone ringing';
+  if (/^(task|doctor|system|watch\.source|chaos)/.test(e.kind)) refresh();
+};
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

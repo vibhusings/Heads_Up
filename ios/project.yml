@@ -1,0 +1,60 @@
+# XcodeGen spec. On a Mac: `brew install xcodegen && cd ios && xcodegen` then open HeadsUp.xcodeproj.
+# Set DEVELOPMENT_TEAM below (or in Xcode > Signing) to run on your own iPhone and Watch.
+name: HeadsUp
+options:
+  bundleIdPrefix: edu.umd.headsup
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "11.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+packages:
+  Porcupine:
+    url: https://github.com/Picovoice/porcupine
+    from: 3.0.0
+
+targets:
+  HeadsUp:
+    type: application
+    platform: iOS
+    sources:
+      - HeadsUp
+      - Shared
+    dependencies:
+      - package: Porcupine
+      - target: HeadsUpWatch
+    info:
+      path: HeadsUp/Info.plist
+      properties:
+        CFBundleDisplayName: Heads Up
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        NSMicrophoneUsageDescription: Heads Up listens for "Hey Heads Up" and your spoken answers.
+        NSSpeechRecognitionUsageDescription: Heads Up turns what you say into commands, on device.
+        NSMotionUsageDescription: Heads Up reads AirPods head motion so you can nod yes or shake no.
+        NSCalendarsFullAccessUsageDescription: Heads Up reads your next 7 days to know when you're in a meeting and to catch plans that clash. It never changes your calendar.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Heads Up connects to its backend on your local network.
+
+  HeadsUpWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - HeadsUpWatch
+      - Shared
+    info:
+      path: HeadsUpWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Heads Up
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: edu.umd.headsup.HeadsUp
+        WKBackgroundModes: [workout-processing]
+        NSHealthShareUsageDescription: Heads Up runs a workout session so it can tap your wrist.
+        NSHealthUpdateUsageDescription: Heads Up runs a workout session so it can tap your wrist.
+    entitlements:
+      path: HeadsUpWatch/HeadsUpWatch.entitlements
+      properties:
+        com.apple.developer.healthkit: true
