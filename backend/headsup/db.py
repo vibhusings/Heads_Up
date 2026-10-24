@@ -48,6 +48,8 @@ KEYS = {
     "approvals": "id",
 }
 FIXTURE_KEYS = {**{name: name for name in MODELS}, "app_events": "events", "action_results": "results"}
+# Executor bookkeeping (Person D): cleared on reset, never seeded from fixtures.
+EXECUTION_TABLES = ("action_attempts", "outbox")
 
 
 class FoundationRepository:
@@ -87,6 +89,17 @@ class FoundationRepository:
                 CREATE INDEX IF NOT EXISTS signals_session ON signals(session_id);
                 CREATE INDEX IF NOT EXISTS plans_session ON plans(session_id);
                 INSERT OR IGNORE INTO schema_migrations(version) VALUES (1);
+                CREATE TABLE IF NOT EXISTS action_attempts (
+                    action_key TEXT PRIMARY KEY, session_id TEXT NOT NULL, plan_id TEXT NOT NULL,
+                    plan_version INTEGER NOT NULL, action_id TEXT NOT NULL, provider TEXT NOT NULL,
+                    state TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS outbox (
+                    action_key TEXT PRIMARY KEY, session_id TEXT NOT NULL, contact_id TEXT NOT NULL,
+                    chat_id TEXT NOT NULL, message_text TEXT NOT NULL, provider_mode TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                INSERT OR IGNORE INTO schema_migrations(version) VALUES (2);
                 """
             )
             self.db.commit()
@@ -109,7 +122,7 @@ class FoundationRepository:
             validated[table] = [model.model_validate(item) for item in raw.get(fixture_key, [])]
 
         with self.transaction():
-            for table in MODELS:
+            for table in (*MODELS, *EXECUTION_TABLES):
                 self.db.execute(f"DELETE FROM {table} WHERE session_id = ?", (SESSION_ID,))
             self.db.execute(
                 "INSERT INTO sessions(id, scenario_id) VALUES (?, ?) "
