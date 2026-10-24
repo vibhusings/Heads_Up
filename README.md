@@ -19,6 +19,32 @@ ANTHROPIC_API_KEY=... .venv/bin/python -m headsup.live_check   # one real call p
 
 With no `ANTHROPIC_API_KEY` set, the backend runs in **offline mode**: every model call is replaced by a deterministic heuristic, so the whole demo works without spending anything. Set the key to use live models.
 
+### Master-plan API and Google Calendar
+
+The stable team API is under `/api`: health, session state, fixture reset,
+idempotent signal ingestion, versioned proposal editing, approval/rejection, and
+simulated action history. Its canonical contracts and fixture are documented in
+`contracts/README.md`.
+
+Calendar defaults to `CALENDAR_MODE=mock`. For a dedicated test calendar, enable
+the Google Calendar API, create a Desktop OAuth client, then authorize read-only
+access on the demo laptop (keep both files outside the repository):
+
+```bash
+cd backend
+.venv/bin/python -m headsup.calendar_oauth \
+  --client-secrets /secure/client_secret.json \
+  --token-file /secure/google-calendar-token.json
+export CALENDAR_MODE=live
+export GOOGLE_CALENDAR_TOKEN_FILE=/secure/google-calendar-token.json
+export GOOGLE_CALENDAR_ID=primary
+```
+
+Only after the read flow is stable, repeat authorization with `--write` and set
+`GOOGLE_CALENDAR_WRITE_ENABLED=true`. Writes recheck the provider version,
+reject recurring events, and return `request_required=true` for meetings owned
+by another organizer.
+
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | unset | Turns on live models |

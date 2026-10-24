@@ -22,6 +22,19 @@ from pydantic import BaseModel
 
 from .chaos import FAULTS
 from .config import settings
+from .engine import process
+from .lifecycle import LifecycleError
+from .models import (
+    ActionResult,
+    ExecutionOutcome,
+    Health,
+    Plan,
+    PlanCommand,
+    PlanPatch,
+    SessionState,
+    Signal,
+    SignalResult,
+)
 from .runtime import Runtime
 from .telephony import CallSession, MediaBridge, owner_leg_twiml, valid_twilio_signature, whisper_twiml
 from .world import to_min
@@ -43,6 +56,86 @@ app = FastAPI(title="Heads Up", lifespan=lifespan)
 
 def rt_of(request_or_ws) -> Runtime:
     return request_or_ws.app.state.rt
+
+
+# ---------- stable application API ----------
+
+@app.get("/api/health", response_model=Health)
+async def api_health(request: Request):
+    rt = rt_of(request)
+    calendar = rt.calendar.health()
+    healthy = calendar.get("status") in {"ok", "configured"}
+    return Health(
+        status="ok" if healthy else "degraded",
+        providers={
+            "calendar": calendar,
+            "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
+        },
+    )
+
+
+@app.get("/api/session", response_model=SessionState)
+async def api_session(request: Request):
+    return rt_of(request).foundation.session()
+
+
+class DemoReset(BaseModel):
+    scenario_id: str = "foundation"
+
+
+@app.post("/api/demo/reset", response_model=SessionState)
+async def api_demo_reset(body: DemoReset, request: Request):
+    try:
+        return rt_of(request).reset_foundation(body.scenario_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/signals", response_model=SignalResult)
+async def api_signals(body: Signal, request: Request):
+    return rt_of(request).foundation.ingest_signal(body, process)
+
+
+def lifecycle_error(exc: LifecycleError) -> HTTPException:
+    status = 404 if exc.code == "NOT_FOUND" else 409
+    return HTTPException(status, detail={"code": exc.code, "message": str(exc)})
+
+
+@app.get("/api/plans/{plan_id}", response_model=Plan)
+async def api_plan(plan_id: str, request: Request):
+    try:
+        return rt_of(request).lifecycle.get_plan(plan_id)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.patch("/api/plans/{plan_id}", response_model=Plan)
+async def api_plan_patch(plan_id: str, body: PlanPatch, request: Request):
+    try:
+        return rt_of(request).lifecycle.revise(plan_id, body)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.post("/api/plans/{plan_id}/approve", response_model=ExecutionOutcome)
+async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
+    try:
+        return rt_of(request).lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.post("/api/plans/{plan_id}/reject", response_model=Plan)
+async def api_plan_reject(plan_id: str, body: PlanCommand, request: Request):
+    try:
+        return rt_of(request).lifecycle.reject(plan_id, body.expected_version)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.get("/api/actions", response_model=list[ActionResult])
+async def api_actions(request: Request):
+    return rt_of(request).foundation.session().results
 
 
 # ---------- device ----------
