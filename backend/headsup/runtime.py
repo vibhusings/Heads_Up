@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 
 from .agents.base import Agent
 from .agents.concierge import Concierge
@@ -23,19 +24,32 @@ from .config import Settings
 from .contracts import Task
 from .devices import DeviceGateway
 from .doctor import Doctor
+from .db import FoundationRepository
 from .events import EventBus, EventLog
 from .holdline import HoldLineRunner, SimBusiness, TwilioHoldLine
 from .ledger import Ledger
+from .lifecycle import LifecycleService
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
 from .telephony import Telephony
 from .world import World, demo_world
+from .providers.calendar import (
+    FREEBUSY_SCOPE,
+    READ_SCOPE,
+    WRITE_SCOPE,
+    GoogleCalendarProvider,
+    GoogleTokenStore,
+    MockCalendarProvider,
+    UnavailableCalendarProvider,
+)
 
 
 class Runtime:
     def __init__(self, settings: Settings, world: World | None = None):
         self.settings = settings
         self.log = EventLog(settings.db_path)
+        self.foundation = FoundationRepository(self.log.db)
+        self.lifecycle = LifecycleService(self.foundation)
         self.bus = EventBus(self.log)
         self.ledger = Ledger(settings.daily_budget_usd)
         self.brain = Brain(settings, self.ledger, self.bus)
@@ -59,6 +73,7 @@ class Runtime:
                          else SimBusiness(self.bus, self.chaos, segment_s=settings.hold_sim_segment_s))
         self.clock = Clock()
         self.devices.today = self.clock.today
+        self.calendar = self._calendar_provider()
 
         # Shared state.
         self.tasks: dict[str, Task] = {}
@@ -85,6 +100,31 @@ class Runtime:
             self.supervisor, self.doctor)}
         self._bg: list[asyncio.Task] = []
 
+    def _calendar_provider(self):
+        if self.settings.calendar_mode == "mock":
+            return MockCalendarProvider(self.foundation.session().events)
+        if self.settings.calendar_mode != "live":
+            return UnavailableCalendarProvider("CALENDAR_MODE must be mock or live")
+        if not self.settings.google_calendar_token_file:
+            return UnavailableCalendarProvider()
+        token_file = Path(self.settings.google_calendar_token_file).expanduser()
+        if not token_file.is_file():
+            return UnavailableCalendarProvider("Google Calendar token file does not exist")
+        scopes = [WRITE_SCOPE if self.settings.google_calendar_write_enabled else READ_SCOPE]
+        if self.settings.google_calendar_freebusy_enabled:
+            scopes.append(FREEBUSY_SCOPE)
+        return GoogleCalendarProvider(
+            self.settings.google_calendar_id,
+            GoogleTokenStore(token_file, scopes),
+            scopes=scopes,
+        )
+
+    def reset_foundation(self, scenario_id: str):
+        state = self.foundation.reset(scenario_id)
+        if self.settings.calendar_mode == "mock":
+            self.calendar = MockCalendarProvider(state.events)
+        return state
+
     # ---- lifecycle ----
 
     async def start(self) -> None:
@@ -95,10 +135,13 @@ class Runtime:
                                             "budget_usd": self.ledger.daily_budget_usd}, source="runtime")
 
     async def stop(self) -> None:
-        for t in self._bg + [r for r in self._runner_tasks()]:
+        background = self._bg + self._runner_tasks()
+        for t in background:
             t.cancel()
-        for agent in self.agents.values():
-            await agent.stop()
+        if background:
+            await asyncio.gather(*background, return_exceptions=True)
+        await asyncio.gather(*(agent.stop() for agent in self.agents.values()))
+        await self.calendar.close()
 
     def _runner_tasks(self) -> list[asyncio.Task]:
         return [t for t in asyncio.all_tasks() if t.get_name().startswith("runner-")]

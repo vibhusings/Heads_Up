@@ -1,0 +1,52 @@
+{
+  "contacts": [
+    {
+      "id": "contact_alex",
+      "display_name": "Alex",
+      "relationship": "colleague",
+      "email": "alex@example.test",
+      "beeper_chat_id": null,
+      "preferred_channel": "message",
+      "tone": "professional",
+      "auto_notify_allowed": false
+    }
+  ],
+  "events": [
+    {
+      "id": "event_meeting_001",
+      "provider": "fixture",
+      "provider_event_id": null,
+      "title": "Project meeting",
+      "start_at": "2026-10-24T20:00:00Z",
+      "end_at": "2026-10-24T21:00:00Z",
+      "timezone": "America/New_York",
+      "mode": "in_person",
+      "destination": "Downtown office",
+      "contact_ids": ["contact_alex"],
+      "organizer_self": true,
+      "writable": true,
+      "provider_version": "fixture-v1"
+    },
+    {
+      "id": "event_later_001",
+      "provider": "fixture",
+      "provider_event_id": null,
+      "title": "Later appointment",
+      "start_at": "2026-10-24T22:00:00Z",
+      "end_at": "2026-10-24T23:00:00Z",
+      "timezone": "America/New_York",
+      "mode": "in_person",
+      "destination": "Downtown office",
+      "contact_ids": [],
+      "organizer_self": true,
+      "writable": true,
+      "provider_version": "fixture-v1"
+    }
+  ],
+  "signals": [],
+  "impacts": [],
+  "plans": [],
+  "actions": [],
+  "results": [],
+  "approvals": []
+}

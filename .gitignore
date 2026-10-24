@@ -7,3 +7,5 @@ ios/HeadsUp.xcodeproj/
 ios/**/*.ppn
 .DS_Store
 xcuserdata/
+google-calendar-token*.json
+client_secret*.json

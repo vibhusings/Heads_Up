@@ -11,17 +11,35 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import secrets
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from .chaos import FAULTS
 from .config import settings
+from .engine import process
+from .lifecycle import LifecycleError
+from .models import (
+    ActionResult,
+    ExecutionOutcome,
+    Health,
+    LocationInput,
+    LocationResult,
+    Plan,
+    PlanCommand,
+    PlanPatch,
+    SessionState,
+    Signal,
+    SignalResult,
+)
 from .runtime import Runtime
 from .telephony import CallSession, MediaBridge, owner_leg_twiml, valid_twilio_signature, whisper_twiml
 from .world import to_min
@@ -39,10 +57,130 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Heads Up", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors_origins),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Pairing-Token"],
+)
 
 
 def rt_of(request_or_ws) -> Runtime:
     return request_or_ws.app.state.rt
+
+
+# ---------- stable application API ----------
+
+@app.get("/api/health", response_model=Health)
+async def api_health(request: Request):
+    rt = rt_of(request)
+    calendar = rt.calendar.health()
+    healthy = calendar.get("status") in {"ok", "configured"}
+    return Health(
+        status="ok" if healthy else "degraded",
+        providers={
+            "calendar": calendar,
+            "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
+            "phone_pairing": {"mode": "live", "status": "configured" if rt.settings.pairing_token else "disabled"},
+        },
+    )
+
+
+@app.get("/api/session", response_model=SessionState)
+async def api_session(request: Request):
+    return rt_of(request).foundation.session()
+
+
+class DemoReset(BaseModel):
+    scenario_id: str = "foundation"
+
+
+@app.post("/api/demo/reset", response_model=SessionState)
+async def api_demo_reset(body: DemoReset, request: Request):
+    try:
+        return rt_of(request).reset_foundation(body.scenario_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/signals", response_model=SignalResult)
+async def api_signals(body: Signal, request: Request):
+    return rt_of(request).foundation.ingest_signal(body, process)
+
+
+@app.post("/api/location", response_model=LocationResult)
+async def api_location(
+    body: LocationInput,
+    request: Request,
+    pairing_token: str | None = Header(default=None, alias="X-Pairing-Token"),
+):
+    rt = rt_of(request)
+    expected = rt.settings.pairing_token
+    if not expected or not pairing_token or not secrets.compare_digest(pairing_token, expected):
+        raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "valid pairing token required"})
+    age = (datetime.now(timezone.utc) - body.captured_at).total_seconds()
+    if age > 120 or age < -30:
+        return LocationResult(status="stale", error_code="STALE_LOCATION")
+    fingerprint = f"{body.latitude:.6f}:{body.longitude:.6f}:{body.captured_at.isoformat()}"
+    signal = Signal(
+        id="location_" + hashlib.sha256(fingerprint.encode()).hexdigest()[:12],
+        kind="location_eta",
+        source="phone",
+        source_mode="live",
+        observed_at=body.captured_at,
+        position={
+            "latitude": body.latitude,
+            "longitude": body.longitude,
+            "accuracy_meters": body.accuracy_meters,
+        },
+        route_duration_seconds=body.route_duration_seconds,
+    )
+    uncertain = body.accuracy_meters > 200
+    result = rt.foundation.ingest_signal(signal, None if uncertain else process)
+    return LocationResult(status="uncertain" if uncertain else "accepted", signal=result)
+
+
+def lifecycle_error(exc: LifecycleError) -> HTTPException:
+    status = 404 if exc.code == "NOT_FOUND" else 409
+    return HTTPException(status, detail={"code": exc.code, "message": str(exc)})
+
+
+@app.get("/api/plans/{plan_id}", response_model=Plan)
+async def api_plan(plan_id: str, request: Request):
+    try:
+        return rt_of(request).lifecycle.get_plan(plan_id)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.patch("/api/plans/{plan_id}", response_model=Plan)
+async def api_plan_patch(plan_id: str, body: PlanPatch, request: Request):
+    try:
+        return rt_of(request).lifecycle.revise(plan_id, body)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.post("/api/plans/{plan_id}/approve", response_model=ExecutionOutcome)
+async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
+    try:
+        return rt_of(request).lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.post("/api/plans/{plan_id}/reject", response_model=Plan)
+async def api_plan_reject(plan_id: str, body: PlanCommand, request: Request):
+    try:
+        return rt_of(request).lifecycle.reject(plan_id, body.expected_version)
+    except LifecycleError as exc:
+        raise lifecycle_error(exc) from exc
+
+
+@app.get("/api/actions", response_model=list[ActionResult])
+async def api_actions(request: Request):
+    return rt_of(request).foundation.session().results
 
 
 # ---------- device ----------

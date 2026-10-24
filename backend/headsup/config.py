@@ -48,6 +48,26 @@ class Settings:
     # Storage.
     db_path: str = field(default_factory=lambda: os.getenv("HEADSUP_DB", "headsup.db"))
 
+    # Calendar defaults to deterministic fixtures. Live mode uses user OAuth
+    # files kept outside the repository on the designated demo laptop.
+    calendar_mode: str = field(default_factory=lambda: os.getenv("CALENDAR_MODE", "mock").lower())
+    google_calendar_id: str = field(default_factory=lambda: os.getenv("GOOGLE_CALENDAR_ID", "primary"))
+    google_calendar_token_file: str | None = field(default_factory=lambda: os.getenv("GOOGLE_CALENDAR_TOKEN_FILE"))
+    google_calendar_write_enabled: bool = field(
+        default_factory=lambda: _env_bool("GOOGLE_CALENDAR_WRITE_ENABLED", False)
+    )
+    google_calendar_freebusy_enabled: bool = field(
+        default_factory=lambda: _env_bool("GOOGLE_CALENDAR_FREEBUSY_ENABLED", False)
+    )
+    pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
+    cors_origins: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            item.strip()
+            for item in os.getenv("HEADSUP_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+            if item.strip()
+        )
+    )
+
     # Optional real integrations. Each one falls back to its simulator when unset.
     aviationstack_key: str | None = field(default_factory=lambda: os.getenv("AVIATIONSTACK_KEY"))
     wmata_key: str | None = field(default_factory=lambda: os.getenv("WMATA_KEY"))
