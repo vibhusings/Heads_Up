@@ -41,6 +41,7 @@ from .models import (
     SignalResult,
 )
 from .runtime import Runtime
+from .voice import VoiceTools, handle_webhook
 from .telephony import CallSession, MediaBridge, owner_leg_twiml, valid_twilio_signature, whisper_twiml
 from .world import to_min
 
@@ -83,6 +84,7 @@ async def api_health(request: Request):
             "calendar": calendar,
             "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
             "phone_pairing": {"mode": "live", "status": "configured" if rt.settings.pairing_token else "disabled"},
+            "voice": {"mode": "live", "status": "configured" if rt.settings.vapi_webhook_secret else "disabled"},
         },
     )
 
@@ -176,6 +178,23 @@ async def api_plan_reject(plan_id: str, body: PlanCommand, request: Request):
         return rt_of(request).lifecycle.reject(plan_id, body.expected_version)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+
+
+@app.post("/api/voice/webhook")
+async def api_voice_webhook(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_vapi_secret: str | None = Header(default=None),
+):
+    rt = rt_of(request)
+    expected = rt.settings.vapi_webhook_secret
+    if not expected:
+        raise HTTPException(503, detail={"code": "VOICE_DISABLED", "message": "VAPI_WEBHOOK_SECRET is not set"})
+    supplied = x_vapi_secret or (authorization or "").removeprefix("Bearer ").strip()
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "valid Vapi credential required"})
+    tools = VoiceTools(rt.lifecycle, rt.foundation.session)
+    return handle_webhook(tools, await request.json())
 
 
 @app.get("/api/actions", response_model=list[ActionResult])

@@ -3,6 +3,7 @@ import { DemoControls } from "./components/DemoControls";
 import { ImpactCard } from "./components/ImpactCard";
 import { ProposalCard } from "./components/ProposalCard";
 import { Timeline } from "./components/Timeline";
+import { VoicePanel } from "./components/VoicePanel";
 import { useSession } from "./useSession";
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
             )}
           </div>
           <div className="col">
+            <VoicePanel plan={plan?.status === "proposed" ? plan : undefined} />
             {plan && (
               <ProposalCard
                 key={plan.id}

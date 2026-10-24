@@ -60,6 +60,8 @@ class Settings:
         default_factory=lambda: _env_bool("GOOGLE_CALENDAR_FREEBUSY_ENABLED", False)
     )
     pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
+    # Vapi calls /api/voice/webhook with this as a Bearer credential (set on the saved assistant).
+    vapi_webhook_secret: str | None = field(default_factory=lambda: os.getenv("VAPI_WEBHOOK_SECRET"))
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: tuple(
             item.strip()

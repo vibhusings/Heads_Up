@@ -103,3 +103,5 @@ button.danger { color: var(--danger); border-color: var(--danger); }
 .result-skipped { border-style: dashed; }
 .result-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 blockquote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--border); }
+
+.transcript { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
