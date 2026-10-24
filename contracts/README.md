@@ -26,3 +26,7 @@ and the executor should offer a proposal message instead.
 
 `contracts/fixtures/foundation.json` covers location lateness;
 `contracts/fixtures/flight.json` covers the delayed-flight meeting scenario.
+
+`MessagingProvider.send(chat_id, text, action_id)` is the provider boundary.
+`MESSAGING_MODE=mock` is the default; selecting unconfigured live mode returns a
+truthful failure and never falls back to the simulated outbox.
