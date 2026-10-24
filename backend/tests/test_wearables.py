@@ -177,3 +177,26 @@ def test_duplicate_signal_does_not_ask_twice(client):
     client.post("/api/signals", json=DINNER_LATE)
     time.sleep(0.3)
     assert len(events(client, "wearable.asked")) == 1
+
+
+def test_vapi_approval_withdraws_the_wearable_question(client):
+    from headsup.voice import PlanVersionArgs, VoiceTools
+
+    client.post("/api/signals", json=DINNER_LATE)
+    asked(client)
+    tools = VoiceTools(rt(client).lifecycle, rt(client).foundation.session, rt(client).executor.run_plan)
+    client.portal.call(tools.approve_plan, PlanVersionArgs(plan_id=PLAN, expected_version=1))
+    wait_until(lambda: events(client, "wearable.withdrawn"))
+    wait_until(lambda: rt(client).devices.pending_for("vibhu") == [])
+    assert plan(client)["status"] == "completed"
+    assert [a.approval_channel for a in rt(client).foundation.session().approvals] == ["voice"]
+
+
+def test_vapi_edit_is_asked_again_as_the_new_version(client):
+    from headsup.voice import RevisePlanArgs, VoiceTools
+
+    client.post("/api/signals", json=DINNER_LATE)
+    asked(client)
+    tools = VoiceTools(rt(client).lifecycle, rt(client).foundation.session, rt(client).executor.run_plan)
+    tools.revise_plan(RevisePlanArgs(plan_id=PLAN, expected_version=1, message_text="Hey Sam, 40 min late!"))
+    wait_until(lambda: rt(client).devices.pending_for("vibhu") == [f"plan:{PLAN}:v2"])

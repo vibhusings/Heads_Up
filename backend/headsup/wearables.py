@@ -40,6 +40,7 @@ class WearableBridge:
     def __init__(self, rt: "Runtime"):
         self.rt = rt
         self._asks: dict[str, asyncio.Task] = {}  # plan id -> the running ask
+        self.watch_interval_s = 0.5  # how often an open question checks the plan is still undecided
 
     @property
     def user(self) -> str:
@@ -99,14 +100,43 @@ class WearableBridge:
         channel = pick_channel("decision", "normal", profile.context if profile else {})
         bus.publish("wearable.asked", {"plan_id": plan.id, "version": plan.version, "channel": channel.name.lower()},
                     source="wearables", user=self.user)
-        answer = await devices.ask(self.user, ask_id(plan), spoken, channel)
+        answer = await self._ask_while_current(plan, spoken, channel)
         if self._asks.get(plan_id) is asyncio.current_task():
             del self._asks[plan_id]  # a newer offer for this plan keeps its own entry
+        if answer is None:
+            return  # decided or changed elsewhere while we were asking
         if answer["value"] == "none":
             bus.publish("wearable.no_answer", {"plan_id": plan.id, "version": plan.version},
                         source="wearables", user=self.user)
             return  # no answer, no action: the plan stays proposed for the interface or voice
         await self.decide(plan.id, plan.version, answer["value"], answer.get("via", "unknown"))
+
+    async def _ask_while_current(self, plan: Plan, spoken: str, channel) -> dict | None:
+        """Ask, but withdraw the question as soon as the plan is decided or edited some other way
+        (buttons, Vapi, anything else that calls the lifecycle). An edit is asked about anew."""
+        question = asyncio.create_task(self.rt.devices.ask(self.user, ask_id(plan), spoken, channel))
+        try:
+            while True:
+                done, _ = await asyncio.wait({question}, timeout=self.watch_interval_s)
+                if done:
+                    return question.result()
+                try:
+                    current = self.rt.lifecycle.get_plan(plan.id)
+                except LifecycleError:
+                    current = None
+                if current is not None and current.status == "proposed" and current.version == plan.version:
+                    continue
+                self.rt.bus.publish("wearable.withdrawn", {"plan_id": plan.id, "version": plan.version,
+                                    "now": current.status if current else "missing"},
+                                    source="wearables", user=self.user)
+                if current is not None and current.status == "proposed":  # edited: ask about the new version
+                    if self._asks.get(plan.id) is asyncio.current_task():
+                        del self._asks[plan.id]
+                    self.offer([plan.id])
+                return None
+        finally:
+            if not question.done():
+                question.cancel()
 
     # ---------- decisions ----------
 
