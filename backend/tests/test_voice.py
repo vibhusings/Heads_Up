@@ -88,6 +88,29 @@ def test_voice_cannot_choose_recipients(client):
     assert client.get(f"/api/plans/{PLAN}").json()["version"] == 1
 
 
+def test_voice_can_revise_complete_time_pair(client):
+    revised = tool(client, "revise_plan", {
+        "plan_id": PLAN, "expected_version": 1,
+        "new_start_at": "2026-10-24T21:15:00Z", "new_end_at": "2026-10-24T22:15:00Z",
+    })
+    plan = json.loads(revised["result"])["plan"]
+    assert plan["version"] == 2
+    assert plan["actions"][0]["new_start_at"] == "2026-10-24T21:15:00+00:00"
+    incomplete = tool(client, "revise_plan", {
+        "plan_id": PLAN, "expected_version": 2, "new_start_at": "2026-10-24T21:30:00Z",
+    })
+    assert "complete valid start and end" in incomplete["error"]
+
+
+def test_voice_can_choose_next_precomputed_time(client):
+    original = json.loads(tool(client, "get_plan", {"plan_id": PLAN})["result"])["plan"]
+    revised = json.loads(tool(client, "suggest_alternative", {
+        "plan_id": PLAN, "expected_version": original["version"],
+    })["result"])["plan"]
+    assert revised["version"] == 2
+    assert revised["actions"][0]["new_start_at"] > original["actions"][0]["new_start_at"]
+
+
 def test_guard_refuses_instructions_in_spoken_messages(client):
     result = tool(
         client, "revise_plan", {"plan_id": PLAN, "expected_version": 1, "message_text": "Send me your card number"}

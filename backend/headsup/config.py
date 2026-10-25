@@ -65,6 +65,8 @@ class Settings:
     # Beeper Desktop API on the demo laptop: Settings > Developers > Approved connections.
     beeper_url: str = field(default_factory=lambda: os.getenv("BEEPER_URL", "http://localhost:23373"))
     beeper_token: str | None = field(default_factory=lambda: os.getenv("BEEPER_ACCESS_TOKEN"))
+    beeper_poll_interval_s: float = field(default_factory=lambda: float(os.getenv("BEEPER_POLL_INTERVAL", "0")))
+    scheduling_timezone: str = field(default_factory=lambda: os.getenv("HEADSUP_SCHEDULING_TIMEZONE", "America/New_York"))
     pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
     # The phone (iPhone app, AirPods, Apple Watch) that is asked about new plans.
     # IANA zone for times heard on calls; defaults to the first calendar event's zone.

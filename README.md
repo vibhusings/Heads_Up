@@ -84,6 +84,21 @@ by another organizer.
 Mappings survive a demo reset. A contact without a verified chat can't be messaged. If Beeper isn't running, the
 send is `failed`; if Beeper doesn't answer clearly, it's `unknown` and is never resent.
 
+### Combined scheduling demo
+
+The control room's **Load all mock data** button loads Sam, Alex, the project meeting, later appointment, and dinner
+in one session. Dinner and flight signals are additive. **Inject Sam request** supplies the deterministic inbound
+message `Dinner today at 4:00 PM for 60 minutes?`; Heads Up detects the project-meeting conflict and proposes 5 PM.
+Approving creates a tentative calendar hold first, then sends the reply. In mock mode both are labeled simulated.
+
+Live inbound Beeper reads only contacts mapped with `/api/contacts/{contact_id}/beeper-chat`. Trigger a manual poll
+with `POST /api/messaging/poll {"messages":null}` or set `BEEPER_POLL_INTERVAL` to a positive number of seconds.
+Messages are persisted by Beeper message ID and never processed twice. `HEADSUP_SCHEDULING_TIMEZONE` controls parsing.
+Ambiguous requests stay visible and do not create executable plans.
+
+Calendar creation requires `GOOGLE_CALENDAR_WRITE_ENABLED=1` and a token authorized for `calendar.events`. Live mode
+never falls back to fixtures. Tentative holds are titled `Tentative: ...` and carry a private Heads Up action ID.
+
 Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on another model automatically.
 
 ### Wearables: plans on the AirPods and Apple Watch

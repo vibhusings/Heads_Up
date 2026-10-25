@@ -6,6 +6,7 @@ import type {
   DemoScenario,
   ExecutionOutcome,
   Health,
+  IncomingMessage,
   LocationInput,
   LocationResult,
   PairingResult,
@@ -45,6 +46,7 @@ export interface Api {
   rejectPlan(planId: string, expectedVersion: number): Promise<Plan>;
   pairPhone(): Promise<PairingResult>;
   postLocation(token: string, sample: LocationInput): Promise<LocationResult>;
+  pollMessages(messages?: Record<string, unknown>[]): Promise<IncomingMessage[]>;
 }
 
 export const DEMOS = demoSignals as Record<DemoScenario, { scenario_id: string; signal: Signal }>;
@@ -80,6 +82,7 @@ const realApi: Api = {
     request("POST", `/api/plans/${encodeURIComponent(planId)}/reject`, { expected_version: expectedVersion }),
   pairPhone: () => request("POST", "/api/pairing"),
   postLocation: (token, sample) => request("POST", "/api/location", sample, { "X-Pairing-Token": token }),
+  pollMessages: (messages) => request("POST", "/api/messaging/poll", { messages: messages ?? null }),
 };
 
 // ---------- mock: replays captured backend responses ----------
@@ -198,6 +201,9 @@ function mockApi(): Api {
       const age = (Date.now() - Date.parse(sample.captured_at)) / 1000;
       if (age > 120) return { status: "stale", signal: null, error_code: "STALE_LOCATION" };
       return { status: sample.accuracy_meters > 200 ? "uncertain" : "accepted", signal: null, error_code: null };
+    },
+    async pollMessages() {
+      return [];
     },
   };
 }

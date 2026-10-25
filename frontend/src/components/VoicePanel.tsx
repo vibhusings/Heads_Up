@@ -10,16 +10,28 @@ type Line = { role: string; text: string };
 
 // Voice is another way to press the same buttons: the assistant calls the backend's
 // /api/voice/webhook tools, and changes show up here through normal session polling.
-export function VoicePanel({ plan }: { plan: Plan | undefined }) {
+export function VoicePanel({ plan, announcement }: { plan: Plan | undefined; announcement?: string }) {
   const vapi = useRef<Vapi | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
+  const announcedPlan = useRef<string | null>(null);
   const configured = Boolean(PUBLIC_KEY && ASSISTANT_ID);
 
   useEffect(() => () => void vapi.current?.stop(), []);
+
+  useEffect(() => {
+    if (status !== "live" || !plan || !announcement || announcedPlan.current === plan.id || !vapi.current) return;
+    vapi.current.send({
+      type: "add-message",
+      message: { role: "system", content: `A new approved-source scheduling plan is available. plan_id=${plan.id}, version=${plan.version}. ${announcement}` },
+      triggerResponseEnabled: false,
+    });
+    vapi.current.say(announcement);
+    announcedPlan.current = plan.id;
+  }, [announcement, plan, status]);
 
   async function start() {
     if (!PUBLIC_KEY || !ASSISTANT_ID || status !== "idle") return;
@@ -36,6 +48,7 @@ export function VoicePanel({ plan }: { plan: Plan | undefined }) {
           setStatus("idle");
           setSpeaking(false);
           setMuted(false);
+          announcedPlan.current = null;
         });
         client.on("speech-start", () => setSpeaking(true));
         client.on("speech-end", () => setSpeaking(false));
@@ -51,6 +64,7 @@ export function VoicePanel({ plan }: { plan: Plan | undefined }) {
         vapi.current = client;
       }
       await client.start(ASSISTANT_ID, {
+        firstMessage: "I’m checking your current plans.",
         variableValues: plan ? { plan_id: plan.id, plan_version: plan.version } : {},
       });
     } catch (exc) {

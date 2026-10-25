@@ -39,6 +39,16 @@ assistants, so the assistant must be saved in the Vapi dashboard).
 4. Run the backend with `VAPI_WEBHOOK_SECRET=...` and the frontend with
    `VITE_VAPI_PUBLIC_KEY=...` and `VITE_VAPI_ASSISTANT_ID=...`.
 
+After voice-tool changes, rerun `python -m headsup.voice` and replace both the saved assistant prompt and tool schemas
+in Vapi. Set its first message to `I’m checking your current plans.` It must not contain Sam, Alex, a time, or an old
+proposal. The UI passes the selected plan as assistant variables, and the prompt requires `get_plan` before speaking.
+Voice can revise the message and/or a complete start/end pair, but cannot change the recipient.
+
+The single voice demo starts with the `conversation` fixture. Start voice before clicking **Receive message from Sam**.
+The live Vapi session receives and speaks the new conflict. When the user says the 5 PM suggestion does not work,
+the saved assistant must call `suggest_alternative`; the backend selects the next precomputed free slot (7 PM),
+creates version 2, and requires approval of that exact version before calendar creation and messaging.
+
 Voice tools refuse recipient fields, run message edits through the existing
 `Guard`, and approve only the `expected_version` the assistant read back.
 

@@ -16,7 +16,7 @@ export function ImpactCard({ impact, event, signals }: { impact: Impact; event: 
 
   return (
     <section className="card">
-      <h2>Impact</h2>
+      <h2>What changed</h2>
       <div className="calc">
         {used.map((signal) => (
           <div key={signal.id} className="calc-row">
