@@ -58,3 +58,22 @@ targets:
       path: HeadsUpWatch/HeadsUpWatch.entitlements
       properties:
         com.apple.developer.healthkit: true
+
+# Shared schemes, so the Run menu always offers both apps after `xcodegen`.
+# Build the HeadsUp scheme on the iPhone: it also builds and installs the watch app.
+schemes:
+  HeadsUp:
+    build:
+      targets:
+        HeadsUp: all
+        HeadsUpWatch: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  HeadsUpWatch:
+    build:
+      targets:
+        HeadsUpWatch: all
+    run:
+      config: Debug
