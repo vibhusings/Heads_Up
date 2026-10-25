@@ -112,7 +112,11 @@ async def api_demo_reset(body: DemoReset, request: Request):
 
 @app.post("/api/signals", response_model=SignalResult)
 async def api_signals(body: Signal, request: Request):
-    return rt_of(request).foundation.ingest_signal(body, process)
+    rt = rt_of(request)
+    result = rt.foundation.ingest_signal(body, process)
+    if not result.duplicate:
+        rt.wearables.offer(result.plan_ids)  # ask on the AirPods and watch
+    return result
 
 
 # Requests relayed by a tunnel or proxy carry these; a pairing must start on this machine.
@@ -165,6 +169,8 @@ async def api_location(
     )
     uncertain = body.accuracy_meters > 200
     result = rt.foundation.ingest_signal(signal, None if uncertain else process)
+    if not result.duplicate:
+        rt.wearables.offer(result.plan_ids)
     return LocationResult(status="uncertain" if uncertain else "accepted", signal=result)
 
 
@@ -183,10 +189,13 @@ async def api_plan(plan_id: str, request: Request):
 
 @app.patch("/api/plans/{plan_id}", response_model=Plan)
 async def api_plan_patch(plan_id: str, body: PlanPatch, request: Request):
+    rt = rt_of(request)
     try:
-        return rt_of(request).lifecycle.revise(plan_id, body)
+        revised = rt.lifecycle.revise(plan_id, body)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+    rt.wearables.offer([plan_id])  # the new version replaces any question still open on the wearables
+    return revised
 
 
 @app.post("/api/plans/{plan_id}/approve", response_model=ExecutionOutcome)
@@ -196,6 +205,7 @@ async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
         queued = rt.lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+    rt.wearables.cancel(plan_id)  # decided elsewhere: stop asking on the wearables
     # The approval is already durable; if this request dies here, the executor resumes on restart.
     plan = await rt.executor.run_plan(plan_id)
     results = rt.foundation.results_for_actions([action.id for action in plan.actions])
@@ -204,10 +214,13 @@ async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
 
 @app.post("/api/plans/{plan_id}/reject", response_model=Plan)
 async def api_plan_reject(plan_id: str, body: PlanCommand, request: Request):
+    rt = rt_of(request)
     try:
-        return rt_of(request).lifecycle.reject(plan_id, body.expected_version)
+        rejected = rt.lifecycle.reject(plan_id, body.expected_version)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+    rt.wearables.cancel(plan_id)
+    return rejected
 
 
 @app.post("/api/voice/webhook")

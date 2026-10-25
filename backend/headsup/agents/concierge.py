@@ -12,7 +12,7 @@ from .base import Agent
 
 class Command(BaseModel):
     intent: Literal["remember", "recall", "call", "hold_line", "forget_call", "what_did_you_find", "receipt",
-                    "other"]
+                    "pending", "approve", "reject", "other"]
     argument: str  # the thing to remember, the person or business to call, etc. Empty when none.
     purpose: str = ""  # hold_line only: what the user needs from the business
 
@@ -22,7 +22,8 @@ CONCIERGE_SYSTEM = (
     "one back, 'call' places a phone call to a person, 'hold_line' calls a business, waits on hold and connects "
     "the user when a person answers (argument = the business, purpose = what they need), 'forget_call' deletes "
     "what was learned from the last call, 'what_did_you_find' asks for research results, 'receipt' asks what "
-    "Heads Up did today."
+    "Heads Up did today, 'pending' asks to hear the proposal waiting for a decision, 'approve' and 'reject' "
+    "answer that proposal."
 )
 
 BUSINESS_HINTS = r"(?i)\b(airline|airlines|united|delta|american|pharmacy|cvs|comcast|bank|insurance|support)\b"
@@ -30,6 +31,12 @@ BUSINESS_HINTS = r"(?i)\b(airline|airlines|united|delta|american|pharmacy|cvs|co
 
 def heuristic(text: str) -> Command:
     t = text.strip()
+    if re.search(r"(?i)\b(what'?s pending|anything pending|read it (again|back)|what do you need)\b", t):
+        return Command(intent="pending", argument="")
+    if re.fullmatch(r"(?i)\s*(approve( it)?|send it|yes,? send( it)?|go ahead)[.!]?\s*", t):
+        return Command(intent="approve", argument="")
+    if re.fullmatch(r"(?i)\s*(reject( it)?|don'?t send( it)?|skip( it)?|cancel( it)?)[.!]?\s*", t):
+        return Command(intent="reject", argument="")
     if m := re.match(r"(?i)remember (?:that )?(.+)", t):
         return Command(intent="remember", argument=m.group(1))
     if m := re.match(r"(?i)(?:call|get me through to|hold for) (.+?)(?: and (.+?))?[.?!]?$", t):
@@ -84,6 +91,10 @@ class Concierge(Agent):
             await rt.devices.say(user, f"Calling {name}. I'll wait on hold and tap you when a person picks up.")
         elif cmd.intent == "receipt":
             await rt.timekeeper.send_receipt(user)
+        elif cmd.intent == "pending":
+            await rt.wearables.read_pending()
+        elif cmd.intent in {"approve", "reject"}:
+            await rt.wearables.decide_pending("yes" if cmd.intent == "approve" else "no")
         elif cmd.intent == "forget_call":
             rt.world.commitments[user].clear()
             rt.bus.publish("privacy.forgot_call", {}, source=self.name, user=user)

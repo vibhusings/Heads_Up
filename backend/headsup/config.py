@@ -63,6 +63,8 @@ class Settings:
     # connected before Level A is tagged, so live sends fail rather than pretend.
     messaging_mode: str = field(default_factory=lambda: os.getenv("MESSAGING_MODE", "mock").lower())
     pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
+    # The phone (iPhone app, AirPods, Apple Watch) that is asked about new plans.
+    wearable_user: str = field(default_factory=lambda: os.getenv("HEADSUP_WEARABLE_USER", "vibhu"))
     # Vapi calls /api/voice/webhook with this as a Bearer credential (set on the saved assistant).
     vapi_webhook_secret: str | None = field(default_factory=lambda: os.getenv("VAPI_WEBHOOK_SECRET"))
     cors_origins: tuple[str, ...] = field(
