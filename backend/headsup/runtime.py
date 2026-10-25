@@ -13,6 +13,7 @@ from pathlib import Path
 from .agents.base import Agent
 from .agents.concierge import Concierge
 from .agents.context import Extractor, Researcher
+from .agents.listener import LiveListener
 from .agents.thinkers import Judge, Planner, Triage
 from .agents.timekeeper import Timekeeper
 from .agents.watchers import FlightWatcher
@@ -94,6 +95,7 @@ class Runtime:
         self.flight_watcher = FlightWatcher(self, sources, interval_s=settings.flight_poll_s)
         self.triage = Triage(self)
         self.extractor = Extractor(self)
+        self.listener = LiveListener(self)
         self.supervisor = Supervisor(self)
         self.doctor = Doctor(self)
         self.planner = Planner(self)
@@ -105,7 +107,7 @@ class Runtime:
         self.timekeeper = Timekeeper(self)
         self.wearables = WearableBridge(self)
         self.agents: dict[str, Agent] = {a.name: a for a in (
-            self.flight_watcher, self.triage, self.extractor, self.concierge, self.timekeeper,
+            self.flight_watcher, self.triage, self.extractor, self.listener, self.concierge, self.timekeeper,
             self.supervisor, self.doctor)}
         self._bg: list[asyncio.Task] = []
 

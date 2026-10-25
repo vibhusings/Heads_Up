@@ -67,6 +67,8 @@ class Settings:
     beeper_token: str | None = field(default_factory=lambda: os.getenv("BEEPER_ACCESS_TOKEN"))
     pairing_token: str | None = field(default_factory=lambda: os.getenv("HEADSUP_PAIRING_TOKEN"))
     # The phone (iPhone app, AirPods, Apple Watch) that is asked about new plans.
+    # IANA zone for times heard on calls; defaults to the first calendar event's zone.
+    user_timezone: str | None = field(default_factory=lambda: os.getenv("HEADSUP_TIMEZONE"))
     wearable_user: str = field(default_factory=lambda: os.getenv("HEADSUP_WEARABLE_USER", "vibhu"))
     # Vapi calls /api/voice/webhook with this as a Bearer credential (set on the saved assistant).
     vapi_webhook_secret: str | None = field(default_factory=lambda: os.getenv("VAPI_WEBHOOK_SECRET"))
