@@ -1,210 +1,375 @@
 # Heads Up
 
-A voice co-pilot for your day. It watches live data, stays silent while things are fine, and taps your wrist or whispers in your AirPods only when a decision is needed. Underneath is a multi-agent runtime that notices when it is stuck, looping or overspending and repairs itself.
+**Heads Up is a proactive voice scheduling assistant.** It notices when an incoming request conflicts with your calendar, suggests a free alternative, lets you revise the plan by voice, and acts only after explicit approval.
 
-```
-backend/   Python: agents, Supervisor, Doctor, device gateway, judges' screen
-ios/       Swift: iPhone app (wake word, AirPods voice, nod/shake) + Watch app (haptics, double-tap)
+This README is the complete demo walkthrough. The primary demo uses deterministic fixture data, a real browser voice session through Vapi, and safe mock calendar/messaging providers. Google Calendar and Beeper Desktop can replace the mock providers without changing the approval flow.
+
+## The demo story
+
+Your calendar already contains:
+
+- **4:00–5:00 PM:** Team meeting
+- **6:00–7:00 PM:** Evening appointment
+
+While you are talking to Heads Up, Sam sends:
+
+> Dinner today at 4:00 PM for 60 minutes?
+
+Heads Up should:
+
+1. Announce the new message during the active voice call.
+2. Explain that 4 PM conflicts with the team meeting.
+3. Suggest the first free slot, **5 PM**.
+4. When told that 5 PM does not work, deterministically select **7 PM** because the 6 PM appointment blocks the intervening times.
+5. Ask for approval of the revised plan.
+6. After approval, create a tentative calendar event and then send the reply to Sam.
+
+The calendar action always runs before messaging. If calendar creation fails, the reply is skipped rather than falsely claiming the time was reserved.
+
+## Repository layout
+
+```text
+backend/    FastAPI, SQLite, scheduling engine, Vapi tools, providers and tests
+frontend/   React + TypeScript demo interface
+contracts/  Shared contract documentation and deterministic fixtures
+ios/        Optional iPhone, AirPods and Apple Watch clients
 ```
 
-## Backend
+## Quick start
+
+Requirements: Python 3.11+, Node.js 20+, and a Vapi public key and saved assistant ID for voice.
+
+```bash
+git clone https://github.com/vibhusings/Heads_Up.git
+cd Heads_Up
+git checkout person-a-foundation
+git pull origin person-a-foundation
+```
+
+### 1. Install the backend
 
 ```bash
 cd backend
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m headsup          # http://localhost:8000 is the control room
-.venv/bin/python -m pytest           # 45 tests, all offline
-ANTHROPIC_API_KEY=... .venv/bin/python -m headsup.live_check   # one real call per model step
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
 ```
 
-With no `ANTHROPIC_API_KEY` set, the backend runs in **offline mode**: every model call is replaced by a deterministic heuristic, so the whole demo works without spending anything. Set the key to use live models.
+Windows PowerShell activation:
 
-### Master-plan API and Google Calendar
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
 
-The stable team API is under `/api`: health, session state, fixture reset,
-idempotent signal ingestion, versioned proposal editing, approval/rejection, and
-simulated action history. Its canonical contracts and fixture are documented in
-`contracts/README.md`.
+### 2. Configure the frontend
 
-With the backend running, exercise either complete Level A scenario with:
+Create `frontend/.env.local`:
+
+```env
+VITE_API_MODE=real
+VITE_API_BASE=
+VITE_VAPI_PUBLIC_KEY=your_vapi_public_key
+VITE_VAPI_ASSISTANT_ID=your_saved_assistant_id
+```
+
+Never commit real keys or tokens.
+
+### 3. Run the backend
+
+From `backend/` with the virtual environment active:
+
+```bash
+HEADSUP_OFFLINE=1 \
+CALENDAR_MODE=mock \
+MESSAGING_MODE=mock \
+VAPI_WEBHOOK_SECRET="your-vapi-webhook-secret" \
+python -m headsup
+```
+
+The API runs at `http://localhost:8000`. The backend does **not** automatically load `backend/.env.local`; export variables or include them in the start command.
+
+### 4. Run the frontend
+
+In a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+If old Dinner Delay or Flight Delay buttons appear, you are running an older branch or cached frontend. Confirm `git log -1`, restart Vite, and hard-refresh the browser.
+
+## Configure Vapi
+
+Vapi needs a public HTTPS URL for the backend webhook. For example:
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+```
+
+Use the resulting URL as:
+
+```text
+https://YOUR-TUNNEL-URL/api/voice/webhook
+```
+
+Print the exact current system prompt and tool schemas:
 
 ```bash
 cd backend
-.venv/bin/python -m headsup.demo --scenario foundation
-.venv/bin/python -m headsup.demo --scenario flight
+source .venv/bin/activate
+python -m headsup.voice
 ```
 
-Calendar defaults to `CALENDAR_MODE=mock`. For a dedicated test calendar, enable
-the Google Calendar API, create a Desktop OAuth client, then authorize read-only
-access on the demo laptop (keep both files outside the repository):
+In the Vapi dashboard:
+
+1. Open the saved Heads Up assistant.
+2. Replace its system prompt with the printed `system_prompt`.
+3. Create or update all printed tools: `get_plan`, `suggest_alternative`, `revise_plan`, `reject_plan`, and `approve_plan`.
+4. Give every tool the public `/api/voice/webhook` URL.
+5. Attach a Bearer credential whose value exactly matches `VAPI_WEBHOOK_SECRET`.
+6. Set the first message to `I’m checking your current plans.`
+7. Save the assistant.
+
+Do not put the webhook secret in frontend code or tool JSON. Keep it in Vapi’s server-side credential configuration.
+
+## Presentation script
+
+### Reset and explain the calendar
+
+Click **Reset demo**.
+
+Say:
+
+> “This is my current calendar. I have a team meeting at 4 PM and another appointment at 6 PM.”
+
+### Start voice
+
+Click **Start voice** and allow microphone access. Heads Up should say:
+
+> “I’m checking your current plans.”
+
+### Receive the request
+
+Click **Receive message from Sam**.
+
+Heads Up should announce that Sam requested dinner at 4 PM, explain the team-meeting conflict, and suggest 5 PM.
+
+### Ask for another time
+
+Say:
+
+> “Five doesn’t work for me. Can you suggest something else?”
+
+The assistant calls `suggest_alternative`. The backend—not the voice model—chooses the next precomputed conflict-free time: **7 PM**. The visible proposal should move to version 2.
+
+### Approve
+
+Say:
+
+> “That works. Approve it and send the message.”
+
+Expected result:
+
+- A **Tentative: Dinner with Sam** event appears at 7 PM.
+- Calendar creation appears first under **Completed actions**.
+- The reply appears second as a simulated outbox action.
+- Repeating approval does not execute either action again.
+
+Suggested closing narration:
+
+> “Heads Up connected an incoming message with my calendar, explained the conflict, found safe alternatives, accepted a spoken revision, and required approval before changing anything or messaging another person.”
+
+## What is real and what is simulated?
+
+| Part | Demo mode | Live-capable path |
+| --- | --- | --- |
+| Voice conversation | Real Vapi browser call | Same |
+| Incoming message | Deterministic injected Beeper-shaped message | Beeper Desktop API polling |
+| Conflict detection | Real deterministic backend calculation | Same |
+| Plan revisions | Real versioned SQLite state | Same |
+| Calendar creation | Mock calendar, labeled simulated | Google Calendar OAuth |
+| Reply | Persisted simulated outbox | Beeper Desktop send |
+
+Mock mode never claims an external action succeeded. Live mode never silently falls back to mock.
+
+## Live Beeper Desktop messaging
+
+Beeper Desktop must be open on the same machine as the backend.
+
+1. In Beeper Desktop, open **Settings → Developers**, enable the API, create an approved connection, and copy its token.
+2. Configure and inspect the local API:
+
+```bash
+export BEEPER_ACCESS_TOKEN="your-token"
+export BEEPER_URL="http://localhost:23373"
+
+cd backend
+source .venv/bin/activate
+python -m headsup.messaging check
+python -m headsup.messaging chats
+```
+
+3. Start the backend with `MESSAGING_MODE=live`.
+4. Map Sam to a verified one-to-one chat:
+
+```bash
+curl -X PUT http://localhost:8000/api/contacts/contact_sam/beeper-chat \
+  -H "Content-Type: application/json" \
+  -d '{"chat_id":"YOUR_CHAT_ID"}'
+```
+
+5. Poll the mapped chat:
+
+```bash
+curl -X POST http://localhost:8000/api/messaging/poll \
+  -H "Content-Type: application/json" \
+  -d '{"messages":null}'
+```
+
+Alternatively, set `BEEPER_POLL_INTERVAL` to a positive number of seconds. Only mapped one-to-one chats are read, and persisted message IDs prevent duplicate processing. Definite failures remain failed; uncertain sends are marked unknown and never retried blindly.
+
+## Live Google Calendar
+
+Use a dedicated test calendar and consenting participants. Authorize read access:
 
 ```bash
 cd backend
-.venv/bin/python -m headsup.calendar_oauth \
+source .venv/bin/activate
+python -m headsup.calendar_oauth \
   --client-secrets /secure/client_secret.json \
   --token-file /secure/google-calendar-token.json
-export CALENDAR_MODE=live
-export GOOGLE_CALENDAR_TOKEN_FILE=/secure/google-calendar-token.json
-export GOOGLE_CALENDAR_ID=primary
 ```
 
-Only after the read flow is stable, repeat authorization with `--write` and set
-`GOOGLE_CALENDAR_WRITE_ENABLED=true`. Writes recheck the provider version,
-reject recurring events, and return `request_required=true` for meetings owned
-by another organizer.
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `ANTHROPIC_API_KEY` | unset | Turns on live models |
-| `HEADSUP_MODEL_MAIN` | `claude-opus-5-5` | Planner, Researcher, Doctor |
-| `HEADSUP_MODEL_FAST` | `claude-haiku-5-5` | Triage, Extractor, Judge, Concierge |
-| `HEADSUP_DAILY_BUDGET` | `2.00` | Daily spending cap in USD |
-| `HEADSUP_ANSWER_TIMEOUT` | `20` | Seconds to wait for a nod before moving up the channel ladder |
-| `AVIATIONSTACK_KEY` | unset | Real flight data instead of the simulators |
-| `HEADSUP_FLIGHT_POLL_REAL` | `600` | Seconds between real flight-data requests per flight |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | unset | Real SMS, and real calls together with `HEADSUP_PUBLIC_URL` |
-| `HEADSUP_PUBLIC_URL` | unset | Public https URL of this server that Twilio can reach (e.g. an ngrok tunnel) |
-| `DEEPGRAM_API_KEY` | unset | Live transcription of calls; without it calls connect but aren't transcribed |
-| `HEADSUP_RECEIPT_AT` | `21:30` | When the end-of-day receipt plays |
-| `HEADSUP_PAIRING_TOKEN` | unset | Required `X-Pairing-Token` value for `/api/location` |
-| `HEADSUP_CORS_ORIGINS` | local Vite origins | Comma-separated frontend origins allowed to call `/api` |
-| `MESSAGING_MODE` | `mock` | `mock` records a simulated outbox result; unconfigured `live` fails truthfully |
-| `BEEPER_ACCESS_TOKEN` | unset | Beeper Desktop API token; with `MESSAGING_MODE=live`, approved messages go through Beeper |
-| `BEEPER_URL` | `http://localhost:23373` | Beeper Desktop API address on the demo laptop |
-
-### Real messages through Beeper
-
-1. In Beeper Desktop: Settings → Developers → enable the API, then add an approved connection and copy its token.
-2. `export BEEPER_ACCESS_TOKEN=...` and check it: `.venv/bin/python -m headsup.messaging check`
-3. Find the teammate's one-to-one chat: `.venv/bin/python -m headsup.messaging chats`
-4. Start the backend with `MESSAGING_MODE=live` and map the contact (verified live; group chats are refused):
-   `curl -X PUT localhost:8000/api/contacts/contact_sam/beeper-chat -H 'Content-Type: application/json' -d '{"chat_id":"<id>"}'`
-5. Trigger the scenario and approve. Check the message arrived: `.venv/bin/python -m headsup.messaging messages <id>`
-
-Mappings survive a demo reset. A contact without a verified chat can't be messaged. If Beeper isn't running, the
-send is `failed`; if Beeper doesn't answer clearly, it's `unknown` and is never resent.
-
-### Combined scheduling demo
-
-The control room's **Load all mock data** button loads Sam, Alex, the project meeting, later appointment, and dinner
-in one session. Dinner and flight signals are additive. **Inject Sam request** supplies the deterministic inbound
-message `Dinner today at 4:00 PM for 60 minutes?`; Heads Up detects the project-meeting conflict and proposes 5 PM.
-Approving creates a tentative calendar hold first, then sends the reply. In mock mode both are labeled simulated.
-
-Live inbound Beeper reads only contacts mapped with `/api/contacts/{contact_id}/beeper-chat`. Trigger a manual poll
-with `POST /api/messaging/poll {"messages":null}` or set `BEEPER_POLL_INTERVAL` to a positive number of seconds.
-Messages are persisted by Beeper message ID and never processed twice. `HEADSUP_SCHEDULING_TIMEZONE` controls parsing.
-Ambiguous requests stay visible and do not create executable plans.
-
-Calendar creation requires `GOOGLE_CALENDAR_WRITE_ENABLED=1` and a token authorized for `calendar.events`. Live mode
-never falls back to fixtures. Tentative holds are titled `Tentative: ...` and carry a private Heads Up action ID.
-
-Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on another model automatically.
-
-### Wearables: plans on the AirPods and Apple Watch
-
-`headsup/wearables.py` connects the plan and approval flow to the iPhone app. When the engine creates a plan (or a plan is edited), the watch taps twice and the AirPods whisper the proposal. The answer goes through the same approve and reject as the buttons, for that exact plan version:
-
-- **Nod or "yes"** approves; **shake or "no"** rejects; in a meeting, the proposal goes to the watch screen (double-tap approves, long-press rejects).
-- **No answer, no action:** the plan stays proposed for the interface or voice.
-- **Edited before you answer:** the new version is asked instead, and an answer to the old one is refused.
-- **Result:** one soft tap when sent (or simulated), a long buzz when it failed.
-- **Voice:** "Hey Heads Up, what's pending?", "approve it", "reject it".
-- **No verified contact:** the draft is read out but never offered for approval.
-
-It uses the phone's existing message format (`ios/Shared/Protocol.swift`), with `task_id` set to `plan:<plan_id>:v<version>`, so the app needs no changes for this. `HEADSUP_WEARABLE_USER` (default `vibhu`) names the phone that is asked. Without the phone, the control room's virtual device (`/sim/answer`) stands in.
-
-### Running the demo from the control room
-
-1. Click **AirPods in**, set a flight delay of 90 and click **Set**.
-2. Vibhu's virtual device shows two taps and the spoken question. Click **Nod**.
-3. Watch the agents negotiate (propose 8:15, Sam's agent counters 8:00, accept), the booking get verified, and both devices get one soft tap.
-4. Turn on chaos faults one at a time and repeat. The tasks panel shows each repair and the playbook fills up with fixes it learned.
-5. **Play the dinner call** runs the conversation flow: the Extractor finds the plan, the Researcher finds Thai Chef is closed, and the Judge offers to book an alternative.
-6. Set the clock to 18:18 and click **Run at 60x**. At 6:20pm the watch gets the rising "leave now" pulses, plus a reminder of anything you promised on the call. Moving a plan moves its leave time.
-7. **End-of-day receipt** plays the day's summary in the ear (it also plays by itself at `HEADSUP_RECEIPT_AT`, or when you say "what did you do today?").
-
-### Flights
-
-- **Which flights:** today's flights on your calendar. Events titled like "Flight UA 1234 ORD to DCA", "United 777 to Denver" or "B6 401 BOS-DCA" become tracked flights, with the event's end as the landing time. Plans entered by hand in `world.py` are tracked too; the demo has one (UA1234).
-- **Simulated feeds** (no key): polled every 2 seconds. The control room sets the delay, and chaos mode can break the primary feed to show the switch to the backup.
-- **Real data** (`AVIATIONSTACK_KEY`): each flight is polled at most every 10 minutes, and only from 3 hours before landing until an hour after. That's about 24 requests per flight per day; check your plan's monthly limit. If the real feed fails, Heads Up never falls back to the simulators: the data is marked stale and nothing acts on it until the feed recovers.
-- **Not tracked yet:** flights on other days, and flights landing after midnight.
-
-### Calendar: meetings and conflicts
-
-The iPhone reads the next 7 days from every calendar on the phone (iCloud, Google, Outlook) through EventKit, read-only, and sends titles, times and locations to the backend. It sends them on every connect and whenever the calendar changes. Without the phone, **Sync demo calendar** in the control room sends a meeting happening now and a Friday 6:30pm study group.
-
-- **Meetings:** while an event is happening, the backend marks you "in a meeting". Decisions then arrive as two taps on the watch with silent approval instead of a whisper. The manual "In meeting" button still works until the calendar's state next changes.
-- **Conflicts:** when a call produces a plan ("Friday at 7"), it's checked against that day's calendar with a 30-minute travel buffer and a 90-minute assumed length. A clash is spoken ("that plan at 7pm overlaps your 6:30pm Study group"), and Heads Up won't offer to book a clashing time.
-- **Not built:** writing to the calendar (adding holds).
-
-### Hold the line for me
-
-Click **"Call United and get me rebooked"**, or say it after "Hey Heads Up". Heads Up dials the (simulated) airline and picks "changes to an existing trip" from the menu. It then waits through the hold recordings. When Maria picks up, Heads Up introduces itself as an automated assistant, Vibhu's watch gets two taps, and the ear hears "United Airlines agent is on the line. Nod to join." A nod conferences Vibhu in.
-
-| Chaos fault | What the system does |
-| --- | --- |
-| `ivr_loop` (menu keeps repeating) | The Supervisor spots the same key pressed over and over; the Doctor freezes the call and switches to pressing 0 for an operator |
-| `hold_forever` | After `HEADSUP_HOLD_LIMIT` seconds (default 20 min) it asks "Still on hold after N minutes. Keep waiting?"; a shake hangs up |
-| User never answers when the agent picks up | Climbs whisper → call, then apologizes to the agent ("they can't join right now, we'll call back") and hangs up |
-
-Only lines that the keyword rules can't place (menu, hold recording, a person) go to a model, so a long hold costs almost nothing. With Twilio configured, the same task runs over a real call. Keys, speech and the conference are sent by updating the live call. Put a teammate's number in `world.py` businesses for the demo; the defaults are placeholders, so a test can never ring a real airline. Still to verify on a real call: whether Twilio keeps the audio stream running when the call is updated. The driver restarts the stream if it drops, but that path hasn't been exercised.
-
-### Real phone calls
-
-1. Run the server behind a public https URL, e.g. `ngrok http 8000`, and set `HEADSUP_PUBLIC_URL` to it.
-2. Set the three Twilio variables and `DEEPGRAM_API_KEY`. Put real phone numbers in the profiles in `world.py`.
-3. Say "Hey Heads Up, call Sam". Twilio rings your phone; when you answer, you and Sam both hear the consent notice, then you're connected. Each side of the call is transcribed separately, so every line is labeled with who said it. Hanging up sends the transcript to the Extractor.
-
-Twilio webhooks are rejected unless their `X-Twilio-Signature` checks out. Raw audio is never stored.
-
-The iPhone app connects to `ws://<laptop-ip>:8000/ws/device/vibhu`. Without it, the control room acts as the device.
-
-### How the code maps to the plan
-
-| Layer | Code |
-| --- | --- |
-| Gathers context | `agents/watchers.py` (FlightWatcher), `agents/context.py` (Extractor), `calendar_sync.py`, `telephony.py` |
-| Thinks | `agents/thinkers.py` (Triage, Planner, Judge), `agents/concierge.py`, `agents/timekeeper.py` (leave now, receipt) |
-| Does work | `agents/workers.py` (TaskRunner, Liaison, Guard, Verifier), `agents/context.py` (Researcher), `holdline.py` (Hold the line) |
-| Talks to you | `devices.py`, `channels.py` |
-| Keeps it healthy | `supervisor.py`, `doctor.py`, `contracts.py`, `ledger.py`, `events.py` (SQLite log) |
-
-Every task runs under a `TaskContract` (allowed tools, budget, deadline, milestones, max repairs). The Supervisor is plain code and checks every tick for: blocked or stalled tasks, missed deadlines, repeated actions, task and daily overspend, missing heartbeats, flight feed errors and stale data, and repeated model errors. The Doctor works up a repair ladder (retry, switch source, replan, freeze, degrade, restart, escalate, safe stop) and saves fixes that worked to the playbook table.
-
-### What's simulated
-
-- **Flight data:** two simulated feeds share one truth, and chaos can break the primary. AviationStack is wired in when the key is set.
-- **Restaurants:** the phone line and online booking are simulated; the Verifier checks the simulated reservation book independently of what the Caller reported.
-- **Phone calls:** fully wired but only tested against fake Twilio and Deepgram streams. `/sim/call` feeds a transcript without a real call.
-- **Research:** in live mode it uses Claude's server-side web search, which has no access to the user's accounts. Offline it uses a small fixed table.
-
-## iOS and watchOS
-
-You need a Mac with Xcode 16+, an iPhone on iOS 17+, AirPods with head tracking (Pro, Max or 3rd gen) and an Apple Watch on watchOS 11+ (Series 6 or newer). On any watch, double-tap the screen with a finger to approve and long-press to decline; the finger-pinch double tap also works on Series 9 / Ultra 2 and newer.
+Start in live read mode:
 
 ```bash
-brew install xcodegen
-cd ios && xcodegen && open HeadsUp.xcodeproj
+CALENDAR_MODE=live \
+GOOGLE_CALENDAR_TOKEN_FILE=/secure/google-calendar-token.json \
+GOOGLE_CALENDAR_ID=primary \
+python -m headsup
 ```
 
-1. Set your team under Signing for both targets (a free Apple ID works for your own devices).
-2. Train "Hey Heads Up" for free in the [Picovoice Console](https://console.picovoice.ai), download the iOS `.ppn`, add it to the HeadsUp target as `hey-heads-up_ios.ppn`, and put your access key in `ios/HeadsUp/Secrets.swift`.
-3. Run on the iPhone, enter the backend URL (`ws://<laptop-ip>:8000`) and tap Connect.
-4. Run the Watch target once on the watch, and leave it open during the demo. Its workout session keeps custom haptics working with the wrist down.
+For writes, authorize again with `--write` and set `GOOGLE_CALENDAR_WRITE_ENABLED=true`. Calendar writes verify permissions and versions; live failures never become simulated successes.
 
-The Swift code has not been compiled yet; expect small fixes on first build. If XcodeGen's watch embedding gives you trouble, create an iOS App with a Watch App in Xcode and drag in `HeadsUp/`, `HeadsUpWatch/` and `Shared/`.
+## How it works
 
-| File | Does |
+```text
+Incoming message
+      ↓
+Strict scheduling parser
+      ↓
+Calendar conflict + free-slot calculation
+      ↓
+Versioned editable proposal
+      ↓
+Voice or button approval
+      ↓
+Tentative calendar action
+      ↓ only if successful
+Message action
+      ↓
+Persisted results and UI refresh
+```
+
+Important guarantees:
+
+- The assistant never chooses arbitrary recipients.
+- Ambiguous requests do not create executable plans.
+- Every revision creates a new version; approval applies only to the reviewed version.
+- Calendar creation and messaging use dependency ordering.
+- Duplicate approval sends once.
+- Interrupted writes become `unknown` instead of being blindly repeated.
+- Provider credentials remain server-side.
+
+## API overview
+
+| Endpoint | Purpose |
 | --- | --- |
-| `HeadsUp/Coordinator.swift` | Wires everything: backend messages in, speech and haptics out, answers back |
-| `HeadsUp/VoiceLoop.swift` | Porcupine wake word plus stem squeeze backup |
-| `HeadsUp/SpeechIO.swift` | Whispered speech out, on-device transcription in |
-| `HeadsUp/HeadGestures.swift` | Nod and shake from AirPods motion; tune `threshold` on your AirPods |
-| `HeadsUp/AudioRouteMonitor.swift` | Reports whether AirPods are in |
-| `HeadsUp/CalendarSync.swift` | Reads the next 7 days from the phone's calendars (read-only) and sends them to the backend |
-| `HeadsUp/WatchRelay.swift`, `HeadsUpWatch/PhoneLink.swift` | Phone-to-watch link |
-| `HeadsUpWatch/HapticPlayer.swift` | The four vibration patterns |
-| `HeadsUpWatch/HeadsUpWatchApp.swift` | Approval view: double-tap the screen (any watch) or pinch (Series 9+) |
-| `Shared/Protocol.swift` | Message types shared with the backend |
+| `GET /api/health` | Provider modes and readiness without secrets |
+| `GET /api/session` | Calendar, messages, plans, approvals and results |
+| `POST /api/demo/reset` | Reset local fixture state only |
+| `POST /api/messaging/poll` | Poll mapped Beeper chats or inject mock messages |
+| `GET /api/plans/{id}` | Read an exact plan/version |
+| `PATCH /api/plans/{id}` | Revise message or complete start/end pair |
+| `POST /api/plans/{id}/approve` | Approve and execute one version |
+| `POST /api/plans/{id}/reject` | Reject without external action |
+| `POST /api/voice/webhook` | Authenticated Vapi tool dispatcher |
+| `GET /api/actions` | Persisted action outcomes |
+
+Canonical contracts are documented in [`contracts/README.md`](contracts/README.md).
+
+## Testing
+
+Backend:
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m pytest -q
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+Tests cover contracts, reset, persistence, voice revisions, stale versions, alternative selection, Beeper mapping and deduplication, calendar safety, dependency skipping, restart recovery, uncertain writes, and duplicate approval.
+
+## Troubleshooting
+
+### Voice only requests microphone permission
+
+- Confirm the Vapi values are in `frontend/.env.local` and restart Vite.
+- Check the browser console and the newest call in Vapi’s **Calls** page.
+- Confirm the saved assistant has a model, voice, transcriber, prompt and all five tools.
+
+### Voice works, but tools fail
+
+- Confirm the backend has a public HTTPS tunnel.
+- Confirm every tool URL ends in `/api/voice/webhook`.
+- Confirm the Bearer credential matches `VAPI_WEBHOOK_SECRET`.
+- Look for `POST /api/voice/webhook` in the backend terminal.
+
+### The assistant mentions an old person or proposal
+
+- Update the saved prompt and tools using `python -m headsup.voice`.
+- Use the generic first message.
+- Remove old Alex/Sam-specific text from the Vapi dashboard.
+
+### The UI shows old scenarios
+
+```bash
+git checkout person-a-foundation
+git pull origin person-a-foundation
+```
+
+Restart Vite and hard-refresh the browser.
+
+### Live Beeper does not send
+
+- Keep Beeper Desktop open.
+- Run `python -m headsup.messaging check`.
+- Verify Sam is mapped to a one-to-one chat.
+- Inspect `/api/health` and `/api/actions` for provider errors.
+
+## Current limitations
+
+- Scheduling language uses a narrow deterministic grammar; ambiguous requests need clarification.
+- The browser must remain open for the Vapi call.
+- Live Beeper requires Desktop on the backend machine.
+- Provider credentials are not included.
+- Wearable, flight, phone-location and telephony prototypes remain in the repository but are outside this focused demo.
+
+## Safety and privacy
+
+Use test calendars, test chats and consenting teammates. Never commit `.env.local`, OAuth tokens, Beeper tokens, Vapi secrets, calendar client secrets, phone numbers, or personal message history.
+
+Heads Up is built around reviewable proposals: detecting a conflict is not permission to act. Calendar and messaging actions occur only after explicit approval of the current plan version.
