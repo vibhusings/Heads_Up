@@ -44,6 +44,7 @@ from .models import (
     SignalResult,
 )
 from .runtime import Runtime
+from .voice import VoiceTools, handle_webhook
 from .telephony import CallSession, MediaBridge, owner_leg_twiml, valid_twilio_signature, whisper_twiml
 from .world import to_min
 
@@ -87,7 +88,8 @@ async def api_health(request: Request):
             "calendar": calendar,
             "messaging": messaging,
             "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
-            "phone_pairing": {"mode": "live", "status": "configured" if rt.settings.pairing_token else "disabled"},
+            "phone_pairing": {"mode": "live", "status": rt.pairing.status()},
+            "voice": {"mode": "live", "status": "configured" if rt.settings.vapi_webhook_secret else "disabled"},
         },
     )
 
@@ -111,7 +113,33 @@ async def api_demo_reset(body: DemoReset, request: Request):
 
 @app.post("/api/signals", response_model=SignalResult)
 async def api_signals(body: Signal, request: Request):
-    return rt_of(request).foundation.ingest_signal(body, process)
+    rt = rt_of(request)
+    result = rt.foundation.ingest_signal(body, process)
+    if not result.duplicate:
+        rt.wearables.offer(result.plan_ids)  # ask on the AirPods and watch
+    return result
+
+
+# Requests relayed by a tunnel or proxy carry these; a pairing must start on this machine.
+FORWARDED_HEADERS = ("cf-connecting-ip", "x-forwarded-for", "forwarded", "x-real-ip")
+
+
+def from_this_machine(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    return host in {"127.0.0.1", "::1", "localhost"} and not any(h in request.headers for h in FORWARDED_HEADERS)
+
+
+class PairingResult(BaseModel):
+    token: str
+    expires_at: datetime
+
+
+@app.post("/api/pairing", response_model=PairingResult)
+async def api_pairing(request: Request):
+    if not from_this_machine(request):
+        raise HTTPException(403, detail={"code": "LOCAL_ONLY", "message": "pair from the desktop screen"})
+    token, expires_at = rt_of(request).pairing.mint()
+    return PairingResult(token=token, expires_at=expires_at)
 
 
 @app.post("/api/location", response_model=LocationResult)
@@ -121,8 +149,7 @@ async def api_location(
     pairing_token: str | None = Header(default=None, alias="X-Pairing-Token"),
 ):
     rt = rt_of(request)
-    expected = rt.settings.pairing_token
-    if not expected or not pairing_token or not secrets.compare_digest(pairing_token, expected):
+    if not rt.pairing.valid(pairing_token):
         raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "valid pairing token required"})
     age = (datetime.now(timezone.utc) - body.captured_at).total_seconds()
     if age > 120 or age < -30:
@@ -143,6 +170,8 @@ async def api_location(
     )
     uncertain = body.accuracy_meters > 200
     result = rt.foundation.ingest_signal(signal, None if uncertain else process)
+    if not result.duplicate:
+        rt.wearables.offer(result.plan_ids)
     return LocationResult(status="uncertain" if uncertain else "accepted", signal=result)
 
 
@@ -161,10 +190,13 @@ async def api_plan(plan_id: str, request: Request):
 
 @app.patch("/api/plans/{plan_id}", response_model=Plan)
 async def api_plan_patch(plan_id: str, body: PlanPatch, request: Request):
+    rt = rt_of(request)
     try:
-        return rt_of(request).lifecycle.revise(plan_id, body)
+        revised = rt.lifecycle.revise(plan_id, body)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+    rt.wearables.offer([plan_id])  # the new version replaces any question still open on the wearables
+    return revised
 
 
 @app.post("/api/plans/{plan_id}/approve", response_model=ExecutionOutcome)
@@ -174,6 +206,7 @@ async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
         queued = rt.lifecycle.approve(plan_id, body.expected_version, body.user_id, body.channel)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+    rt.wearables.cancel(plan_id)  # decided elsewhere: stop asking on the wearables
     # The approval is already durable; if this request dies here, the executor resumes on restart.
     plan = await rt.executor.run_plan(plan_id)
     results = rt.foundation.results_for_actions([action.id for action in plan.actions])
@@ -182,10 +215,30 @@ async def api_plan_approve(plan_id: str, body: PlanCommand, request: Request):
 
 @app.post("/api/plans/{plan_id}/reject", response_model=Plan)
 async def api_plan_reject(plan_id: str, body: PlanCommand, request: Request):
+    rt = rt_of(request)
     try:
-        return rt_of(request).lifecycle.reject(plan_id, body.expected_version)
+        rejected = rt.lifecycle.reject(plan_id, body.expected_version)
     except LifecycleError as exc:
         raise lifecycle_error(exc) from exc
+    rt.wearables.cancel(plan_id)
+    return rejected
+
+
+@app.post("/api/voice/webhook")
+async def api_voice_webhook(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_vapi_secret: str | None = Header(default=None),
+):
+    rt = rt_of(request)
+    expected = rt.settings.vapi_webhook_secret
+    if not expected:
+        raise HTTPException(503, detail={"code": "VOICE_DISABLED", "message": "VAPI_WEBHOOK_SECRET is not set"})
+    supplied = x_vapi_secret or (authorization or "").removeprefix("Bearer ").strip()
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "valid Vapi credential required"})
+    tools = VoiceTools(rt.lifecycle, rt.foundation.session, rt.executor.run_plan)
+    return await handle_webhook(tools, await request.json())
 
 
 @app.get("/api/actions", response_model=list[ActionResult])

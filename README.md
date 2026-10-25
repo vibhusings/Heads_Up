@@ -86,6 +86,19 @@ send is `failed`; if Beeper doesn't answer clearly, it's `unknown` and is never 
 
 Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on another model automatically.
 
+### Wearables: plans on the AirPods and Apple Watch
+
+`headsup/wearables.py` connects the plan and approval flow to the iPhone app. When the engine creates a plan (or a plan is edited), the watch taps twice and the AirPods whisper the proposal. The answer goes through the same approve and reject as the buttons, for that exact plan version:
+
+- **Nod or "yes"** approves; **shake or "no"** rejects; in a meeting, the proposal goes to the watch screen (double-tap approves, long-press rejects).
+- **No answer, no action:** the plan stays proposed for the interface or voice.
+- **Edited before you answer:** the new version is asked instead, and an answer to the old one is refused.
+- **Result:** one soft tap when sent (or simulated), a long buzz when it failed.
+- **Voice:** "Hey Heads Up, what's pending?", "approve it", "reject it".
+- **No verified contact:** the draft is read out but never offered for approval.
+
+It uses the phone's existing message format (`ios/Shared/Protocol.swift`), with `task_id` set to `plan:<plan_id>:v<version>`, so the app needs no changes for this. `HEADSUP_WEARABLE_USER` (default `vibhu`) names the phone that is asked. Without the phone, the control room's virtual device (`/sim/answer`) stands in.
+
 ### Running the demo from the control room
 
 1. Click **AirPods in**, set a flight delay of 90 and click **Set**.

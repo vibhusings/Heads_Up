@@ -31,9 +31,11 @@ from .executor import Executor
 from .ledger import Ledger
 from .lifecycle import LifecycleService
 from .messaging import BeeperMessaging, SimulatedMessaging, UnavailableMessaging, apply_chat_mappings
+from .pairing import PairingStore
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
 from .telephony import Telephony
+from .wearables import WearableBridge
 from .world import World, demo_world
 from .providers.calendar import (
     FREEBUSY_SCOPE,
@@ -54,6 +56,7 @@ class Runtime:
         apply_chat_mappings(self.foundation)
         self.messaging = self._messaging_provider()
         self.lifecycle = LifecycleService(self.foundation)
+        self.pairing = PairingStore(settings.pairing_token)
         self.bus = EventBus(self.log)
         self.ledger = Ledger(settings.daily_budget_usd)
         self.brain = Brain(settings, self.ledger, self.bus)
@@ -100,6 +103,7 @@ class Runtime:
         self.verifier = Verifier(self)
         self.concierge = Concierge(self)
         self.timekeeper = Timekeeper(self)
+        self.wearables = WearableBridge(self)
         self.agents: dict[str, Agent] = {a.name: a for a in (
             self.flight_watcher, self.triage, self.extractor, self.concierge, self.timekeeper,
             self.supervisor, self.doctor)}
@@ -165,7 +169,7 @@ class Runtime:
             await self.messaging.close()
 
     def _runner_tasks(self) -> list[asyncio.Task]:
-        return [t for t in asyncio.all_tasks() if t.get_name().startswith("runner-")]
+        return [t for t in asyncio.all_tasks() if t.get_name().startswith(("runner-", "wearable-"))]
 
     async def restart_agent(self, name: str) -> None:
         agent = self.agents[name]
