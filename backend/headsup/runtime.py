@@ -32,6 +32,7 @@ from .executor import Executor
 from .ledger import Ledger
 from .lifecycle import LifecycleService
 from .messaging import BeeperMessaging, SimulatedMessaging, UnavailableMessaging, apply_chat_mappings
+from .notify import Notifier
 from .pairing import PairingStore
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
@@ -77,6 +78,7 @@ class Runtime:
         self.restaurants = SimRestaurants(self.chaos)
         self.sms = SMS(settings.twilio_sid, settings.twilio_token, settings.twilio_from)
         self.telephony = Telephony(settings, self.bus, self.world)
+        self.notifier = Notifier(settings, self.bus)
         self.holdline = (TwilioHoldLine(settings, self.bus) if settings.twilio_ready
                          else SimBusiness(self.bus, self.chaos, segment_s=settings.hold_sim_segment_s))
         self.clock = Clock()
@@ -167,6 +169,7 @@ class Runtime:
             await asyncio.gather(*background, return_exceptions=True)
         await asyncio.gather(*(agent.stop() for agent in self.agents.values()))
         await self.calendar.close()
+        await self.notifier.close()
         if isinstance(self.messaging, BeeperMessaging):
             await self.messaging.close()
 

@@ -70,6 +70,9 @@ class Settings:
     # IANA zone for times heard on calls; defaults to the first calendar event's zone.
     user_timezone: str | None = field(default_factory=lambda: os.getenv("HEADSUP_TIMEZONE"))
     wearable_user: str = field(default_factory=lambda: os.getenv("HEADSUP_WEARABLE_USER", "vibhu"))
+    # Mid-call alerts as phone pushes through the ntfy app (subscribe to this topic on the phone).
+    ntfy_topic: str | None = field(default_factory=lambda: os.getenv("NTFY_TOPIC"))
+    ntfy_server: str = field(default_factory=lambda: os.getenv("NTFY_SERVER", "https://ntfy.sh"))
     # Vapi calls /api/voice/webhook with this as a Bearer credential (set on the saved assistant).
     vapi_webhook_secret: str | None = field(default_factory=lambda: os.getenv("VAPI_WEBHOOK_SECRET"))
     cors_origins: tuple[str, ...] = field(

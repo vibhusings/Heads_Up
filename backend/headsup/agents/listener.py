@@ -3,9 +3,11 @@
 Each transcribed line (`call.transcript`, from a call placed through HeadsUp) is
 scanned for a time ("at 8", "8:30 pm", "tomorrow at 7", "eight thirty"). The
 time is checked against calendar events and, when a fresh travel estimate is
-known, against how long it takes to get there. Problems are whispered in the
-AirPods right away; every check is also published for the screen. Nothing is
-sent to anyone: this only informs the user.
+known, against how long it takes to get there. The calendar is the session's
+events, the live Google Calendar (CALENDAR_MODE=live, fetched when the call
+starts) and the events the iPhone synced. Problems are whispered in the
+AirPods and pushed to the phone (see notify.py) right away; every check is also
+published for the screen. Nothing is sent to anyone: this only informs the user.
 """
 
 from __future__ import annotations
@@ -13,17 +15,22 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time as clock_time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from ..calendar_sync import find_day_word, resolve_day
+import httpx
+
+from ..calendar_sync import CalEvent, find_day_word, resolve_day
 from ..models import Event, Signal
+from ..providers.calendar import CalendarProviderError, CalendarWindow
 from .base import Agent
 
 LATE_THRESHOLD = timedelta(minutes=10)  # same rule as the engine
 DEFAULT_LENGTH = timedelta(hours=1)  # a plan said on a call has no end time
 LIVE_LOCATION_MAX_AGE = timedelta(minutes=2)  # older live locations are not trusted
 REPEAT_QUIET_S = 15 * 60  # don't repeat the same warning within a call
+CALENDAR_REFRESH_S = 60  # live calendar fetched at most this often
+LOOKAHEAD = timedelta(days=8)  # "next Friday" is at most a week out
 
 WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
          "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
@@ -125,6 +132,20 @@ def check_time(at: datetime, events: list[Event], away: timedelta | None, now: d
     return Check(at=at, clashes=clashes, late_by=late_by, arrival=arrival, away=away if arrival else None)
 
 
+def phone_events(synced: list[CalEvent], tz: ZoneInfo) -> list[Event]:
+    """Events the iPhone synced (local dates and minutes) as calendar contract events."""
+    events = []
+    for e in synced:
+        if e.all_day:
+            continue
+        start = datetime.combine(e.day, clock_time(e.start // 60, e.start % 60), tz)
+        end = datetime.combine(e.day, clock_time(0), tz) + timedelta(minutes=e.end)
+        if end > start:
+            events.append(Event(id=f"phone:{e.id}", provider="phone", title=e.title, start_at=start, end_at=end,
+                                timezone=tz.key, destination=e.place or None))
+    return events
+
+
 def spoken(check: Check) -> str:
     when = _clock(check.at)
     parts = []
@@ -152,12 +173,17 @@ class LiveListener(Agent):
     def __init__(self, rt):
         super().__init__(rt)
         self._said: dict[tuple[str, str], float] = {}  # (user, time) -> when we last warned
+        self._live: list[Event] = []  # last live calendar fetch
+        self._fetched_at = 0.0
 
     async def run(self) -> None:
-        sub = self.rt.bus.subscribe("call.transcript")
+        sub = self.rt.bus.subscribe("call.transcript", "call.started")
         while True:
             e = await self.next(sub)
             self.beat()
+            if e.kind == "call.started":
+                await self._live_events(datetime.now(timezone.utc), refresh=True)  # ready before anyone says a time
+                continue
             await self.on_line(e.user or self.rt.settings.wearable_user, e.data.get("speaker", ""),
                                e.data.get("text", ""))
 
@@ -168,9 +194,10 @@ class LiveListener(Agent):
         state = self.rt.foundation.session()
         tz = ZoneInfo(self.rt.settings.user_timezone or (state.events[0].timezone if state.events else "UTC"))
         now, away = self._now_and_travel(state.signals, tz)
+        events = await self.events(user, state.events, now, tz)
         checks = []
         for mention in mentions:
-            check = check_time(resolve(mention, now), state.events, away, now)
+            check = check_time(resolve(mention, now), events, away, now)
             checks.append(check)
             self.rt.bus.publish("listen.check", {
                 "heard": text, "speaker": speaker, "time": check.at.isoformat(),
@@ -181,8 +208,32 @@ class LiveListener(Agent):
             key = (user, check.at.isoformat())
             if check.problem and time.time() - self._said.get(key, 0) > REPEAT_QUIET_S:
                 self._said[key] = time.time()
-                await self.rt.devices.say(user, spoken(check))
+                text = spoken(check)
+                await self.rt.devices.say(user, text)
+                await self.rt.notifier.push(user, f"Heads up: {_clock(check.at)} on the call",
+                                            text.removeprefix("Heads up: "))
         return checks
+
+    async def events(self, user: str, stored: list[Event], now: datetime, tz: ZoneInfo) -> list[Event]:
+        """Everything on the calendar: the session's events, the live calendar and the phone's."""
+        by_id = {e.id: e for e in stored}
+        by_id.update({e.id: e for e in await self._live_events(now)})
+        by_id.update({e.id: e for e in phone_events(self.rt.world.calendar.get(user, []), tz)})
+        return list(by_id.values())
+
+    async def _live_events(self, now: datetime, refresh: bool = False) -> list[Event]:
+        if self.rt.settings.calendar_mode != "live":
+            return []  # mock mode: the session's events are the calendar
+        if not refresh and time.time() - self._fetched_at < CALENDAR_REFRESH_S:
+            return self._live
+        self._fetched_at = time.time()  # a failing calendar is retried after the refresh interval too
+        try:
+            self._live = await self.rt.calendar.list_events(
+                CalendarWindow(start_at=now - timedelta(hours=1), end_at=now + LOOKAHEAD))
+        except (CalendarProviderError, httpx.HTTPError) as err:
+            code = getattr(err, "code", "PROVIDER_UNAVAILABLE")
+            self.rt.bus.publish("listen.calendar_unavailable", {"error_code": code}, source=self.name)
+        return self._live
 
     def _now_and_travel(self, signals: list[Signal], tz: ZoneInfo) -> tuple[datetime, timedelta | None]:
         """Current time and travel time. A demo (mock) location brings its own clock; a live
@@ -199,4 +250,4 @@ class LiveListener(Agent):
         return now.astimezone(tz), timedelta(seconds=latest.route_duration_seconds)
 
 
-__all__ = ["LiveListener", "Mention", "check_time", "find_times", "resolve", "spoken"]
+__all__ = ["LiveListener", "Mention", "check_time", "find_times", "phone_events", "resolve", "spoken"]

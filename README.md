@@ -65,6 +65,9 @@ by another organizer.
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | unset | Real SMS, and real calls together with `HEADSUP_PUBLIC_URL` |
 | `HEADSUP_PUBLIC_URL` | unset | Public https URL of this server that Twilio can reach (e.g. an ngrok tunnel) |
 | `DEEPGRAM_API_KEY` | unset | Live transcription of calls; without it calls connect but aren't transcribed |
+| `NTFY_TOPIC` | unset | ntfy topic for mid-call push alerts; subscribe to it in the ntfy phone app. Use a long random name: ntfy.sh topics are public |
+| `NTFY_SERVER` | `https://ntfy.sh` | ntfy server for those pushes |
+| `HEADSUP_TIMEZONE` | first event's zone | IANA zone for times heard on calls, e.g. `America/New_York` |
 | `HEADSUP_RECEIPT_AT` | `21:30` | When the end-of-day receipt plays |
 | `HEADSUP_PAIRING_TOKEN` | unset | Required `X-Pairing-Token` value for `/api/location` |
 | `HEADSUP_CORS_ORIGINS` | local Vite origins | Comma-separated frontend origins allowed to call `/api` |
@@ -141,6 +144,8 @@ Only lines that the keyword rules can't place (menu, hold recording, a person) g
 1. Run the server behind a public https URL, e.g. `ngrok http 8000`, and set `HEADSUP_PUBLIC_URL` to it.
 2. Set the three Twilio variables and `DEEPGRAM_API_KEY`. Put real phone numbers in the profiles in `world.py`.
 3. Say "Hey Heads Up, call Sam". Twilio rings your phone; when you answer, you and Sam both hear the consent notice, then you're connected. Each side of the call is transcribed separately, so every line is labeled with who said it. Hanging up sends the transcript to the Extractor.
+
+While you talk, the live listener checks every time either of you says ("Friday at 7?", "8:30 pm tomorrow") against the calendar: the session's events, your Google Calendar when `CALENDAR_MODE=live` (fetched when the call starts, then at most once a minute), and events synced from the iPhone. A clash is whispered in the AirPods and, with `NTFY_TOPIC` set, pushed to the phone. iOS plays the notification chime into the call, so you hear it in the AirPods and the banner shows what it clashes with. Each warning is given once per call. To start a call without the iPhone app, use `curl -X POST localhost:8000/sim/wake -H 'content-type: application/json' -d '{"user":"vibhu","transcript":"call Sam"}'`.
 
 Twilio webhooks are rejected unless their `X-Twilio-Signature` checks out. Raw audio is never stored.
 
