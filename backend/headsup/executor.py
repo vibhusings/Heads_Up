@@ -162,7 +162,7 @@ class Executor:
         provider = row[0]
         found = await self.messaging.reconcile(key) if provider == self.messaging.name else None
         if found is not None:
-            return self._record(action, provider, found.status, found.provider_reference, None, key)
+            return self._record(action, provider, found.status, found.provider_reference, found.error_code, key)
         return self._record(action, provider, "unknown", error_code="OUTCOME_UNKNOWN", key=key)
 
     # ---- persistence ----

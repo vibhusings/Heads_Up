@@ -69,8 +69,35 @@ by another organizer.
 | `HEADSUP_PAIRING_TOKEN` | unset | Required `X-Pairing-Token` value for `/api/location` |
 | `HEADSUP_CORS_ORIGINS` | local Vite origins | Comma-separated frontend origins allowed to call `/api` |
 | `MESSAGING_MODE` | `mock` | `mock` records a simulated outbox result; unconfigured `live` fails truthfully |
+| `BEEPER_ACCESS_TOKEN` | unset | Beeper Desktop API token; with `MESSAGING_MODE=live`, approved messages go through Beeper |
+| `BEEPER_URL` | `http://localhost:23373` | Beeper Desktop API address on the demo laptop |
+
+### Real messages through Beeper
+
+1. In Beeper Desktop: Settings → Developers → enable the API, then add an approved connection and copy its token.
+2. `export BEEPER_ACCESS_TOKEN=...` and check it: `.venv/bin/python -m headsup.messaging check`
+3. Find the teammate's one-to-one chat: `.venv/bin/python -m headsup.messaging chats`
+4. Start the backend with `MESSAGING_MODE=live` and map the contact (verified live; group chats are refused):
+   `curl -X PUT localhost:8000/api/contacts/contact_sam/beeper-chat -H 'Content-Type: application/json' -d '{"chat_id":"<id>"}'`
+5. Trigger the scenario and approve. Check the message arrived: `.venv/bin/python -m headsup.messaging messages <id>`
+
+Mappings survive a demo reset. A contact without a verified chat can't be messaged. If Beeper isn't running, the
+send is `failed`; if Beeper doesn't answer clearly, it's `unknown` and is never resent.
 
 Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on another model automatically.
+
+### Wearables: plans on the AirPods and Apple Watch
+
+`headsup/wearables.py` connects the plan and approval flow to the iPhone app. When the engine creates a plan (or a plan is edited), the watch taps twice and the AirPods whisper the proposal. The answer goes through the same approve and reject as the buttons, for that exact plan version:
+
+- **Nod or "yes"** approves; **shake or "no"** rejects; in a meeting, the proposal goes to the watch screen (double-tap approves, long-press rejects).
+- **No answer, no action:** the plan stays proposed for the interface or voice.
+- **Edited before you answer:** the new version is asked instead, and an answer to the old one is refused.
+- **Result:** one soft tap when sent (or simulated), a long buzz when it failed.
+- **Voice:** "Hey Heads Up, what's pending?", "approve it", "reject it".
+- **No verified contact:** the draft is read out but never offered for approval.
+
+It uses the phone's existing message format (`ios/Shared/Protocol.swift`), with `task_id` set to `plan:<plan_id>:v<version>`, so the app needs no changes for this. `HEADSUP_WEARABLE_USER` (default `vibhu`) names the phone that is asked. Without the phone, the control room's virtual device (`/sim/answer`) stands in.
 
 ### Running the demo from the control room
 

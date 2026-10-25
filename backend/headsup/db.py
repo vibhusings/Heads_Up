@@ -100,6 +100,12 @@ class FoundationRepository:
                     created_at TEXT NOT NULL
                 );
                 INSERT OR IGNORE INTO schema_migrations(version) VALUES (2);
+                -- Contact-to-chat mappings verified against Beeper. Real setup, so a demo reset keeps them.
+                CREATE TABLE IF NOT EXISTS contact_chats (
+                    contact_id TEXT PRIMARY KEY, chat_id TEXT NOT NULL UNIQUE, title TEXT,
+                    network TEXT, verified_at TEXT NOT NULL
+                );
+                INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);
                 """
             )
             self.db.commit()

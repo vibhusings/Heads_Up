@@ -1,0 +1,25 @@
+{
+  "dinner": {
+    "scenario_id": "foundation",
+    "signal": {
+      "id": "demo_dinner_traffic",
+      "kind": "location_eta",
+      "source": "demo",
+      "source_mode": "mock",
+      "observed_at": "2026-10-25T01:40:00Z",
+      "route_duration_seconds": 3600
+    }
+  },
+  "flight": {
+    "scenario_id": "flight",
+    "signal": {
+      "id": "demo_flight_delay",
+      "kind": "flight_delay",
+      "source": "demo",
+      "source_mode": "mock",
+      "observed_at": "2026-10-24T16:00:00Z",
+      "estimated_arrival_at": "2026-10-24T19:45:00Z",
+      "route_duration_seconds": 2100
+    }
+  }
+}
