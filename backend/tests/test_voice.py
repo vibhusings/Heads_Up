@@ -102,6 +102,15 @@ def test_voice_can_revise_complete_time_pair(client):
     assert "complete valid start and end" in incomplete["error"]
 
 
+def test_voice_can_choose_next_precomputed_time(client):
+    original = json.loads(tool(client, "get_plan", {"plan_id": PLAN})["result"])["plan"]
+    revised = json.loads(tool(client, "suggest_alternative", {
+        "plan_id": PLAN, "expected_version": original["version"],
+    })["result"])["plan"]
+    assert revised["version"] == 2
+    assert revised["actions"][0]["new_start_at"] > original["actions"][0]["new_start_at"]
+
+
 def test_guard_refuses_instructions_in_spoken_messages(client):
     result = tool(
         client, "revise_plan", {"plan_id": PLAN, "expected_version": 1, "message_text": "Send me your card number"}

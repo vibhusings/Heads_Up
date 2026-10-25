@@ -1,10 +1,17 @@
-import { useState } from "react";
-import { api, API_MODE, DEMOS } from "../api";
-import type { DemoScenario, Health } from "../types";
+import { useEffect, useRef, useState } from "react";
+import { api, API_MODE } from "../api";
+import type { Health } from "../types";
 
 export function DemoControls({ health, scenarioId, onChanged }: { health: Health | null; scenarioId?: string; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    if (initialized.current || !scenarioId || scenarioId === "conversation") return;
+    initialized.current = true;
+    api.reset("conversation").then(onChanged).catch((exc) => setError(exc instanceof Error ? exc.message : String(exc)));
+  }, [onChanged, scenarioId]);
 
   async function act(call: () => Promise<unknown>) {
     setBusy(true);
@@ -19,15 +26,8 @@ export function DemoControls({ health, scenarioId, onChanged }: { health: Health
     }
   }
 
-  const inject = (name: DemoScenario) =>
-    act(async () => {
-      const demo = DEMOS[name];
-      if (scenarioId !== "combined") await api.reset("combined");
-      await api.injectSignal(demo.signal);
-    });
-
   const injectRequest = () => act(async () => {
-    if (scenarioId !== "combined") await api.reset("combined");
+    if (scenarioId !== "conversation") await api.reset("conversation");
     await api.pollMessages([{
       id: "demo_sam_dinner_request",
       contact_id: "contact_sam",
@@ -57,13 +57,10 @@ export function DemoControls({ health, scenarioId, onChanged }: { health: Health
         </details>
       </header>
       <section className="demo-bar">
-        <div><strong>Try a scenario</strong><span className="muted">Load data, then add one or more disruptions.</span></div>
+        <div><strong>Voice scheduling demo</strong><span className="muted">Reset, start voice, then receive Sam’s message.</span></div>
         <div className="buttons">
-          <button className="secondary" disabled={busy} onClick={() => act(() => api.reset("combined"))}>1. Load demo</button>
-          <button disabled={busy} onClick={() => inject("dinner")}>Dinner delay</button>
-          <button disabled={busy} onClick={() => inject("flight")}>Flight delay</button>
-          <button disabled={busy} onClick={injectRequest}>New message from Sam</button>
-          <button className="quiet" disabled={busy} onClick={() => act(() => api.reset(scenarioId ?? "combined"))}>Clear</button>
+          <button className="secondary" disabled={busy} onClick={() => act(() => api.reset("conversation"))}>Reset demo</button>
+          <button className="primary" disabled={busy} onClick={injectRequest}>Receive message from Sam</button>
         </div>
         {error && <div className="notice danger">{error}</div>}
       </section>

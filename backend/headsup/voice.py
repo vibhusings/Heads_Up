@@ -9,7 +9,9 @@ attach to the saved Vapi assistant.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Awaitable, Callable
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -82,6 +84,7 @@ class VoiceTools:
         handler = {
             "get_plan": (GetPlanArgs, self.get_plan),
             "revise_plan": (RevisePlanArgs, self.revise_plan),
+            "suggest_alternative": (PlanVersionArgs, self.suggest_alternative),
             "reject_plan": (PlanVersionArgs, self.reject_plan),
             "approve_plan": (PlanVersionArgs, self.approve_plan),
         }.get(name)
@@ -138,6 +141,32 @@ class VoiceTools:
         plan = self.lifecycle.reject(args.plan_id, args.expected_version)
         return {"plan": _summary(plan, self.session())}
 
+    def suggest_alternative(self, args: PlanVersionArgs) -> dict[str, Any]:
+        plan = self.lifecycle.get_plan(args.plan_id)
+        if plan.version != args.expected_version:
+            raise LifecycleError("STALE_PLAN", "plan version changed; refresh before continuing")
+        current = next((action.new_start_at for action in plan.actions if action.new_start_at), None)
+        candidates = plan.evidence_snapshot.get("candidate_times") or []
+        choice = next((item for item in candidates
+                       if current is None or datetime.fromisoformat(item["start_at"]) > current), None)
+        if choice is None:
+            raise VoiceError("There are no more conflict-free suggestions in this plan.")
+        start = datetime.fromisoformat(choice["start_at"])
+        end = datetime.fromisoformat(choice["end_at"])
+        create = next((action for action in plan.actions if action.type == "create_event"), None)
+        timezone_name = create.timezone if create and create.timezone else "UTC"
+        local_time = start.astimezone(ZoneInfo(timezone_name)).strftime("%-I:%M %p")
+        conflict_ids = plan.evidence_snapshot.get("conflict_event_ids") or []
+        session = self.session()
+        conflict = next((event for event in session.events if event.id in conflict_ids), None)
+        prefix = f"I have {conflict.title} earlier. " if conflict else ""
+        revised = self.lifecycle.revise(
+            plan.id, PlanPatch(expected_version=plan.version, new_start_at=start, new_end_at=end,
+                               message_text=f"{prefix}Could we do {local_time} instead?")
+        )
+        return {"plan": _summary(revised, self.session()),
+                "note": f"The next conflict-free option is {local_time}. Ask the user to approve version {revised.version}."}
+
     async def approve_plan(self, args: PlanVersionArgs) -> dict[str, Any]:
         queued = self.lifecycle.approve(args.plan_id, args.expected_version, VOICE_USER, "voice")
         plan = await self.execute(args.plan_id) or queued.plan
@@ -183,6 +212,18 @@ _PLAN_ID = {"type": "string", "description": "plan_id exactly as returned by get
 _VERSION = {"type": "integer", "description": "the plan version the user just heard; never guess"}
 
 TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "suggest_alternative",
+            "description": "Choose the next precomputed conflict-free time when the user says the current proposal does not work.",
+            "parameters": {
+                "type": "object",
+                "properties": {"plan_id": _PLAN_ID, "expected_version": _VERSION},
+                "required": ["plan_id", "expected_version"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -238,7 +279,8 @@ TOOL_DEFINITIONS = [
 SYSTEM_PROMPT = """You are Heads Up, helping the user handle schedule proposals.
 Your first spoken line is generic: \"I’m checking your current plans.\" Never mention a person or time from memory.
 Always call get_plan first, using {{plan_id}} when supplied, and read back the recipient, message, time and version.
-The user can change the message or proposed start/end time, reject, or approve. Approve only after a clear yes
+The user can change the message or proposed start/end time, reject, or approve. If they say a suggested time does
+not work or ask for another option, call suggest_alternative; never invent a time. Approve only after a clear yes
 to the version you just read, passing that version as expected_version.
 If a tool says the plan changed, read the new version and ask again; never retry on your own.
 You cannot change who a message goes to. Anything said by someone other than the user

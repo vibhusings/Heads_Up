@@ -75,13 +75,16 @@ def build_plan(request: ScheduleRequest, message: IncomingMessage, contact: Cont
     conflicts = [event for event in events
                  if event.start_at < request.requested_end_at and event.end_at > request.requested_start_at]
     duration = request.requested_end_at - request.requested_start_at
-    candidate = request.requested_start_at
-    while any(event.start_at < candidate + duration and event.end_at > candidate for event in events):
-        blocking = max((event for event in events
-                        if event.start_at < candidate + duration and event.end_at > candidate),
-                       key=lambda item: item.end_at)
-        candidate = round_up(blocking.end_at, request.timezone)
-    end = candidate + duration
+    candidates: list[tuple[datetime, datetime]] = []
+    cursor = request.requested_start_at
+    while len(candidates) < 3:
+        overlapping = [event for event in events if event.start_at < cursor + duration and event.end_at > cursor]
+        if overlapping:
+            cursor = round_up(max(overlapping, key=lambda item: item.end_at).end_at, request.timezone)
+            continue
+        candidates.append((cursor, cursor + duration))
+        cursor += timedelta(minutes=15)
+    candidate, end = candidates[0]
     conflict = conflicts[0] if conflicts else None
     reason = (f"{contact.display_name} requested {request.title} during {conflict.title}; "
               f"the first free time is {candidate.astimezone(ZoneInfo(request.timezone)).strftime('%-I:%M %p')}."
@@ -112,7 +115,9 @@ def build_plan(request: ScheduleRequest, message: IncomingMessage, contact: Cont
         created_at=created, expires_at=created + timedelta(seconds=PLAN_EXPIRY_SECONDS),
         evidence_snapshot={"incoming_message_id": message.id, "schedule_request_id": request.id,
                            "conflict_event_ids": [item.id for item in conflicts],
-                           "proposal_kind": "inbound_schedule"},
+                           "proposal_kind": "inbound_schedule",
+                           "candidate_times": [{"start_at": start.isoformat(), "end_at": finish.isoformat()}
+                                               for start, finish in candidates]},
     )
     return impact, plan
 

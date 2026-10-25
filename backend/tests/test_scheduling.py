@@ -47,6 +47,9 @@ def test_explicit_request_conflicts_and_creates_dependency_plan(repository):
     assert create.new_start_at == datetime(2026, 10, 24, 21, tzinfo=timezone.utc)
     assert reply.depends_on_action_ids == [create.id]
     assert "5:00 PM" in reply.message_text
+    assert [item["start_at"] for item in plan.evidence_snapshot["candidate_times"]][:2] == [
+        "2026-10-24T21:00:00+00:00", "2026-10-24T23:00:00+00:00",
+    ]
 
 
 def test_ambiguous_request_is_refused(repository):
