@@ -27,9 +27,10 @@ from .chaos import FAULTS
 from .config import settings
 from .engine import process
 from .lifecycle import LifecycleError
-from .messaging import outbox
+from .messaging import RecipientError, map_contact_chat, outbox, unmap_contact_chat
 from .models import (
     ActionResult,
+    Contact,
     ExecutionOutcome,
     Health,
     LocationInput,
@@ -64,7 +65,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Pairing-Token"],
 )
 
@@ -80,7 +81,7 @@ async def api_health(request: Request):
     rt = rt_of(request)
     calendar = rt.calendar.health()
     messaging = rt.messaging.health()
-    healthy = calendar.get("status") in {"ok", "configured"} and messaging.get("status") == "ok"
+    healthy = calendar.get("status") in {"ok", "configured"} and messaging.get("status") in {"ok", "configured"}
     return Health(
         status="ok" if healthy else "degraded",
         providers={
@@ -243,6 +244,33 @@ async def api_voice_webhook(
 @app.get("/api/actions", response_model=list[ActionResult])
 async def api_actions(request: Request):
     return rt_of(request).foundation.session().results
+
+
+class ChatMapping(BaseModel):
+    chat_id: str
+
+
+def recipient_error(exc: RecipientError) -> HTTPException:
+    status = {"NOT_FOUND": 404, "PROVIDER_UNAVAILABLE": 503}.get(exc.code, 409)
+    return HTTPException(status, detail={"code": exc.code, "message": str(exc)})
+
+
+@app.put("/api/contacts/{contact_id}/beeper-chat", response_model=Contact)
+async def api_contact_chat(contact_id: str, body: ChatMapping, request: Request):
+    """Map a contact to a Beeper chat, verified live: the chat must exist and be one-to-one."""
+    rt = rt_of(request)
+    try:
+        return await map_contact_chat(rt.foundation, rt.messaging, contact_id, body.chat_id)
+    except RecipientError as exc:
+        raise recipient_error(exc) from exc
+
+
+@app.delete("/api/contacts/{contact_id}/beeper-chat", response_model=Contact)
+async def api_contact_chat_delete(contact_id: str, request: Request):
+    try:
+        return unmap_contact_chat(rt_of(request).foundation, contact_id)
+    except RecipientError as exc:
+        raise recipient_error(exc) from exc
 
 
 @app.get("/api/outbox", response_model=list[OutboxEntry])

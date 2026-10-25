@@ -69,6 +69,20 @@ by another organizer.
 | `HEADSUP_PAIRING_TOKEN` | unset | Required `X-Pairing-Token` value for `/api/location` |
 | `HEADSUP_CORS_ORIGINS` | local Vite origins | Comma-separated frontend origins allowed to call `/api` |
 | `MESSAGING_MODE` | `mock` | `mock` records a simulated outbox result; unconfigured `live` fails truthfully |
+| `BEEPER_ACCESS_TOKEN` | unset | Beeper Desktop API token; with `MESSAGING_MODE=live`, approved messages go through Beeper |
+| `BEEPER_URL` | `http://localhost:23373` | Beeper Desktop API address on the demo laptop |
+
+### Real messages through Beeper
+
+1. In Beeper Desktop: Settings → Developers → enable the API, then add an approved connection and copy its token.
+2. `export BEEPER_ACCESS_TOKEN=...` and check it: `.venv/bin/python -m headsup.messaging check`
+3. Find the teammate's one-to-one chat: `.venv/bin/python -m headsup.messaging chats`
+4. Start the backend with `MESSAGING_MODE=live` and map the contact (verified live; group chats are refused):
+   `curl -X PUT localhost:8000/api/contacts/contact_sam/beeper-chat -H 'Content-Type: application/json' -d '{"chat_id":"<id>"}'`
+5. Trigger the scenario and approve. Check the message arrived: `.venv/bin/python -m headsup.messaging messages <id>`
+
+Mappings survive a demo reset. A contact without a verified chat can't be messaged. If Beeper isn't running, the
+send is `failed`; if Beeper doesn't answer clearly, it's `unknown` and is never resent.
 
 Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on another model automatically.
 
