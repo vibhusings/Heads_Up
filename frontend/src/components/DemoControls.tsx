@@ -39,29 +39,34 @@ export function DemoControls({ health, scenarioId, onChanged }: { health: Health
   });
 
   return (
-    <header className="topbar">
-      <div className="brand">
-        <strong>Heads Up</strong> <span className="muted">control room</span>
-      </div>
-      <div className="badges">
-        <span className={API_MODE === "mock" ? "pill warn" : "pill"}>API: {API_MODE}</span>
-        {scenarioId && <span className="pill">scenario: {scenarioId}</span>}
-        {health &&
-          Object.entries(health.providers).map(([name, info]) => (
-            <span key={name} className={info.mode === "live" && info.status !== "disabled" ? "pill live" : "pill"}>
-              {name}: {info.mode ?? "?"}
-              {info.status && info.status !== "ok" ? ` (${info.status})` : ""}
-            </span>
-          ))}
-      </div>
-      <div className="buttons">
-        <button disabled={busy} onClick={() => act(() => api.reset("combined"))}>Load all mock data</button>
-        <button disabled={busy} onClick={() => inject("dinner")}>Inject dinner</button>
-        <button disabled={busy} onClick={() => inject("flight")}>Inject flight</button>
-        <button disabled={busy} onClick={injectRequest}>Inject Sam request</button>
-        <button disabled={busy} onClick={() => act(() => api.reset(scenarioId ?? "combined"))}>Reset</button>
-      </div>
-      {error && <div className="notice danger">{error}</div>}
-    </header>
+    <>
+      <header className="topbar">
+        <div className="brand"><span className="brand-mark">H</span><strong>Heads Up</strong></div>
+        <div className="system-state">
+          <span className={health?.status === "ok" ? "status-dot ok" : "status-dot"} />
+          {health?.status === "ok" ? "System ready" : "Check setup"}
+          <span className="mode-label">{API_MODE} · {scenarioId ?? "loading"}</span>
+        </div>
+        <details className="status-menu">
+          <summary>System details</summary>
+          <div className="status-popover">
+            {health && Object.entries(health.providers).map(([name, info]) => (
+              <div key={name}><span>{name.replace(/_/g, " ")}</span><strong>{info.mode ?? info.status ?? "unknown"}</strong></div>
+            ))}
+          </div>
+        </details>
+      </header>
+      <section className="demo-bar">
+        <div><strong>Try a scenario</strong><span className="muted">Load data, then add one or more disruptions.</span></div>
+        <div className="buttons">
+          <button className="secondary" disabled={busy} onClick={() => act(() => api.reset("combined"))}>1. Load demo</button>
+          <button disabled={busy} onClick={() => inject("dinner")}>Dinner delay</button>
+          <button disabled={busy} onClick={() => inject("flight")}>Flight delay</button>
+          <button disabled={busy} onClick={injectRequest}>New message from Sam</button>
+          <button className="quiet" disabled={busy} onClick={() => act(() => api.reset(scenarioId ?? "combined"))}>Clear</button>
+        </div>
+        {error && <div className="notice danger">{error}</div>}
+      </section>
+    </>
   );
 }

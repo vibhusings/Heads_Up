@@ -7,7 +7,7 @@ export function Timeline({ events, impacts }: { events: Event[]; impacts: Impact
 
   return (
     <section className="card">
-      <h2>Today</h2>
+      <h2>Your calendar</h2>
       {ordered.length === 0 && <p className="muted">No events in this session.</p>}
       <ol className="timeline">
         {ordered.map((event) => {

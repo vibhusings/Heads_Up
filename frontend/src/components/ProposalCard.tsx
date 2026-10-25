@@ -79,7 +79,7 @@ export function ProposalCard({ plan, event, contacts, approvals, onChanged }: Pr
   return (
     <section className="card">
       <div className="card-head">
-        <h2>Proposal</h2>
+        <h2>Suggested response</h2>
         <span className="pill version">v{plan.version}</span>
         <span className={`pill status-${plan.status}`}>{label(plan.status)}</span>
       </div>

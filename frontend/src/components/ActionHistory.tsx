@@ -19,8 +19,8 @@ export function ActionHistory({
 
   return (
     <section className="card">
-      <h2>Action history &amp; outbox</h2>
-      {results.length === 0 && <p className="muted">Nothing has been executed.</p>}
+      <h2>Completed actions</h2>
+      {results.length === 0 && <p className="muted">Approved actions will appear here.</p>}
       <ul className="history">
         {[...results].reverse().map((result) => {
           const action = byId.get(result.action_id);
