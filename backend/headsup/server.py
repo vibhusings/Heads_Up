@@ -33,6 +33,7 @@ from .models import (
     Contact,
     ExecutionOutcome,
     Health,
+    IncomingMessage,
     LocationInput,
     LocationResult,
     OutboxEntry,
@@ -90,6 +91,7 @@ async def api_health(request: Request):
             "models": {"mode": "offline" if rt.settings.offline else "live", "status": "ok"},
             "phone_pairing": {"mode": "live", "status": rt.pairing.status()},
             "voice": {"mode": "live", "status": "configured" if rt.settings.vapi_webhook_secret else "disabled"},
+            "beeper_inbound": {"mode": rt.settings.messaging_mode, **rt.inbound.health()},
         },
     )
 
@@ -118,6 +120,26 @@ async def api_signals(body: Signal, request: Request):
     if not result.duplicate:
         rt.wearables.offer(result.plan_ids)  # ask on the AirPods and watch
     return result
+
+
+class InboundPoll(BaseModel):
+    messages: list[dict] | None = None
+
+
+@app.post("/api/messaging/poll", response_model=list[IncomingMessage])
+async def api_messaging_poll(body: InboundPoll, request: Request):
+    rt = rt_of(request)
+    if body.messages is not None and rt.settings.messaging_mode != "mock":
+        raise HTTPException(409, detail={"code": "INVALID_MODE", "message": "supplied messages are mock-only"})
+    before = {plan.id for plan in rt.foundation.session().plans}
+    try:
+        messages = await rt.inbound.poll(body.messages)
+    except Exception as exc:
+        raise HTTPException(503, detail={"code": "PROVIDER_UNAVAILABLE", "message": str(exc)}) from exc
+    created = [plan.id for plan in rt.foundation.session().plans if plan.id not in before]
+    if created:
+        rt.wearables.offer(created)
+    return messages
 
 
 # Requests relayed by a tunnel or proxy carry these; a pairing must start on this machine.

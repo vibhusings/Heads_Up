@@ -80,7 +80,9 @@ def test_foundation_api_health_session_reset_and_idempotent_signal(tmp_path, mon
     with TestClient(app) as client:
         health = client.get("/api/health")
         assert health.status_code == 200
-        assert health.json()["providers"]["calendar"] == {"mode": "mock", "status": "ok"}
+        assert health.json()["providers"]["calendar"] == {
+            "mode": "mock", "status": "ok", "write_enabled": True, "simulated": True,
+        }
 
         session = client.get("/api/session")
         assert session.status_code == 200

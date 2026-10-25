@@ -17,7 +17,9 @@ from .models import (
     Contact,
     Event,
     Impact,
+    IncomingMessage,
     Plan,
+    ScheduleRequest,
     SessionState,
     Signal,
     SignalResult,
@@ -36,6 +38,8 @@ MODELS = {
     "actions": Action,
     "action_results": ActionResult,
     "approvals": Approval,
+    "incoming_messages": IncomingMessage,
+    "schedule_requests": ScheduleRequest,
 }
 KEYS = {
     "contacts": "id",
@@ -46,6 +50,8 @@ KEYS = {
     "actions": "id",
     "action_results": "action_id",
     "approvals": "id",
+    "incoming_messages": "id",
+    "schedule_requests": "id",
 }
 FIXTURE_KEYS = {**{name: name for name in MODELS}, "app_events": "events", "action_results": "results"}
 # Executor bookkeeping (Person D): cleared on reset, never seeded from fixtures.
@@ -85,6 +91,8 @@ class FoundationRepository:
                 CREATE TABLE IF NOT EXISTS actions (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS action_results (action_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS approvals (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS incoming_messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS schedule_requests (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, payload TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS app_events_session ON app_events(session_id);
                 CREATE INDEX IF NOT EXISTS signals_session ON signals(session_id);
                 CREATE INDEX IF NOT EXISTS plans_session ON plans(session_id);
@@ -106,6 +114,7 @@ class FoundationRepository:
                     network TEXT, verified_at TEXT NOT NULL
                 );
                 INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);
+                INSERT OR IGNORE INTO schema_migrations(version) VALUES (4);
                 """
             )
             self.db.commit()
@@ -167,6 +176,8 @@ class FoundationRepository:
             actions=self._list("actions"),
             results=self._list("action_results"),
             approvals=self._list("approvals"),
+            incoming_messages=self._list("incoming_messages"),
+            schedule_requests=self._list("schedule_requests"),
         )
 
     def ingest_signal(

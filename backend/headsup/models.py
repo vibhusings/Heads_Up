@@ -47,6 +47,7 @@ class Event(Contract):
     organizer_self: bool = False
     writable: bool = False
     provider_version: str | None = None
+    tentative: bool = False
 
     @model_validator(mode="after")
     def valid_time_range(self) -> "Event":
@@ -77,6 +78,28 @@ class Signal(Contract):
     route_duration_seconds: int | None = Field(default=None, ge=0)
 
 
+class IncomingMessage(Contract):
+    id: str
+    chat_id: str
+    contact_id: str | None = None
+    sender_name: str | None = None
+    text: str
+    received_at: AwareDatetime
+    status: Literal["processed", "unprocessed", "ambiguous"] = "unprocessed"
+    error_code: str | None = None
+
+
+class ScheduleRequest(Contract):
+    id: str
+    message_id: str
+    contact_id: str
+    title: str
+    requested_start_at: AwareDatetime
+    requested_end_at: AwareDatetime
+    timezone: str
+    status: Literal["proposed", "approved", "rejected"] = "proposed"
+
+
 class Impact(Contract):
     id: str
     event_id: str
@@ -97,6 +120,9 @@ class Action(Contract):
     message_text: str | None = None
     new_start_at: AwareDatetime | None = None
     new_end_at: AwareDatetime | None = None
+    event_title: str | None = None
+    timezone: str | None = None
+    tentative: bool = False
     depends_on_action_ids: list[str] = Field(default_factory=list)
     status: Literal["pending", "executing", "succeeded", "simulated", "failed", "unknown", "skipped"] = "pending"
 
@@ -161,6 +187,8 @@ class SessionState(Contract):
     actions: list[Action]
     results: list[ActionResult]
     approvals: list[Approval]
+    incoming_messages: list[IncomingMessage] = Field(default_factory=list)
+    schedule_requests: list[ScheduleRequest] = Field(default_factory=list)
 
 
 class SignalResult(Contract):

@@ -29,6 +29,7 @@ export interface Event {
   organizer_self: boolean;
   writable: boolean;
   provider_version: string | null;
+  tentative: boolean;
 }
 
 export interface Position {
@@ -71,6 +72,9 @@ export interface Action {
   message_text: string | null;
   new_start_at: ISODateTime | null;
   new_end_at: ISODateTime | null;
+  event_title: string | null;
+  timezone: string | null;
+  tentative: boolean;
   depends_on_action_ids: string[];
   status: ActionStatus;
 }
@@ -128,6 +132,30 @@ export interface SessionState {
   actions: Action[];
   results: ActionResult[];
   approvals: Approval[];
+  incoming_messages: IncomingMessage[];
+  schedule_requests: ScheduleRequest[];
+}
+
+export interface IncomingMessage {
+  id: string;
+  chat_id: string;
+  contact_id: string | null;
+  sender_name: string | null;
+  text: string;
+  received_at: ISODateTime;
+  status: "processed" | "unprocessed" | "ambiguous";
+  error_code: string | null;
+}
+
+export interface ScheduleRequest {
+  id: string;
+  message_id: string;
+  contact_id: string;
+  title: string;
+  requested_start_at: ISODateTime;
+  requested_end_at: ISODateTime;
+  timezone: string;
+  status: "proposed" | "approved" | "rejected";
 }
 
 export interface SignalResult {

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from .db import SESSION_ID, FoundationRepository
 from .messaging import MessagingProvider, RecipientError, SendResult, resolve_recipient
 from .models import Action, ActionResult, Plan
-from .providers.calendar import CalendarChanges, CalendarProvider
+from .providers.calendar import CalendarChanges, CalendarCreate, CalendarProvider
 
 PENDING = {"approved", "executing"}
 SUCCESS = {"succeeded", "simulated"}
@@ -149,6 +149,29 @@ class Executor:
                                   error_code=result.error_code, retry_safe=result.retry_safe)
 
             return update, provider
+
+        if action.type == "create_event":
+            if not action.event_title or action.new_start_at is None or action.new_end_at is None or not action.timezone:
+                raise ActionError("INVALID_ACTION")
+            calendar = self.calendar()
+            try:
+                event_to_create = CalendarCreate(
+                    title=action.event_title, start_at=action.new_start_at, end_at=action.new_end_at,
+                    timezone=action.timezone, tentative=action.tentative,
+                )
+            except ValueError as exc:
+                raise ActionError("INVALID_ACTION") from exc
+            provider = "simulated_calendar" if calendar.mode == "mock" else "google_calendar"
+
+            async def create_event(key: str) -> SendResult:
+                result = await calendar.create_event(key, event_to_create)
+                if result.status == "succeeded" and result.event is not None:
+                    self.repository.put("app_events", result.event)
+                status = "simulated" if result.status == "succeeded" and calendar.mode == "mock" else result.status
+                return SendResult(status=status, provider_reference=result.provider_reference,
+                                  error_code=result.error_code, retry_safe=result.retry_safe)
+
+            return create_event, provider
 
         raise ActionError("INVALID_ACTION")
 

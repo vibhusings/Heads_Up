@@ -7,6 +7,7 @@ from headsup.models import Event
 from headsup.providers.calendar import (
     WRITE_SCOPE,
     CalendarChanges,
+    CalendarCreate,
     CalendarWindow,
     GoogleCalendarProvider,
     MockCalendarProvider,
@@ -35,6 +36,11 @@ def event(*, organizer_self: bool = True, version: str = "v1") -> Event:
 
 def changes() -> CalendarChanges:
     return CalendarChanges(new_start_at=dt(4), new_end_at=dt(5), timezone="America/Los_Angeles")
+
+
+def creation() -> CalendarCreate:
+    return CalendarCreate(title="Tentative: Dinner with Sam", start_at=dt(4), end_at=dt(5),
+                          timezone="America/Los_Angeles", tentative=True)
 
 
 def test_google_normalization_excludes_all_day_and_preserves_timezone():
@@ -72,6 +78,11 @@ async def test_mock_calendar_rejects_stale_and_external_organizer_updates():
     updated = await provider.update_event("event_1", "v1", changes())
     assert updated.status == "succeeded"
     assert updated.event and updated.event.start_at == dt(4)
+
+    created = await provider.create_event("action-1", creation())
+    repeated = await provider.create_event("action-1", creation())
+    assert created.status == "succeeded" and created.event and created.event.tentative
+    assert repeated.provider_reference == created.provider_reference
 
 
 class TokenStore:

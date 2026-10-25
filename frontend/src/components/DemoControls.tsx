@@ -22,9 +22,21 @@ export function DemoControls({ health, scenarioId, onChanged }: { health: Health
   const inject = (name: DemoScenario) =>
     act(async () => {
       const demo = DEMOS[name];
-      await api.reset(demo.scenario_id);
+      if (scenarioId !== "combined") await api.reset("combined");
       await api.injectSignal(demo.signal);
     });
+
+  const injectRequest = () => act(async () => {
+    if (scenarioId !== "combined") await api.reset("combined");
+    await api.pollMessages([{
+      id: "demo_sam_dinner_request",
+      contact_id: "contact_sam",
+      chat_id: "simulated:contact_sam",
+      senderName: "Sam",
+      text: "Dinner today at 4:00 PM for 60 minutes?",
+      timestamp: "2026-10-24T15:00:00Z",
+    }]);
+  });
 
   return (
     <header className="topbar">
@@ -43,9 +55,11 @@ export function DemoControls({ health, scenarioId, onChanged }: { health: Health
           ))}
       </div>
       <div className="buttons">
+        <button disabled={busy} onClick={() => act(() => api.reset("combined"))}>Load all mock data</button>
         <button disabled={busy} onClick={() => inject("dinner")}>Inject dinner</button>
         <button disabled={busy} onClick={() => inject("flight")}>Inject flight</button>
-        <button disabled={busy} onClick={() => act(() => api.reset(scenarioId ?? "foundation"))}>Reset</button>
+        <button disabled={busy} onClick={injectRequest}>Inject Sam request</button>
+        <button disabled={busy} onClick={() => act(() => api.reset(scenarioId ?? "combined"))}>Reset</button>
       </div>
       {error && <div className="notice danger">{error}</div>}
     </header>

@@ -16,9 +16,13 @@ interface Props {
 
 export function ProposalCard({ plan, event, contacts, approvals, onChanged }: Props) {
   const message = plan.actions.find((action) => action.type === "send_message");
+  const scheduled = plan.actions.find((action) => action.new_start_at && action.new_end_at);
   const serverText = message?.message_text ?? "";
   const [draft, setDraft] = useState(serverText);
   const [dirty, setDirty] = useState(false);
+  const [startDraft, setStartDraft] = useState(scheduled?.new_start_at ? toInput(scheduled.new_start_at) : "");
+  const [endDraft, setEndDraft] = useState(scheduled?.new_end_at ? toInput(scheduled.new_end_at) : "");
+  const [timeDirty, setTimeDirty] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const lock = useRef(false); // state updates are async; a double-click must not send twice
   const [notice, setNotice] = useState<Notice>(null);
@@ -29,7 +33,11 @@ export function ProposalCard({ plan, event, contacts, approvals, onChanged }: Pr
   // Follow the server's text whenever a new version arrives, unless the user is mid-edit.
   useEffect(() => {
     if (!dirty) setDraft(serverText);
-  }, [plan.id, plan.version, serverText, dirty]);
+    if (!timeDirty) {
+      setStartDraft(scheduled?.new_start_at ? toInput(scheduled.new_start_at) : "");
+      setEndDraft(scheduled?.new_end_at ? toInput(scheduled.new_end_at) : "");
+    }
+  }, [plan.id, plan.version, serverText, dirty, timeDirty, scheduled?.new_start_at, scheduled?.new_end_at]);
 
   async function run(kind: Exclude<Busy, null>, call: () => Promise<string>) {
     if (lock.current) return;
@@ -53,13 +61,6 @@ export function ProposalCard({ plan, event, contacts, approvals, onChanged }: Pr
       onChanged();
     }
   }
-
-  const save = () =>
-    run("save", async () => {
-      const revised = await api.revisePlan(plan.id, { expected_version: plan.version, message_text: draft });
-      setDirty(false);
-      return `Saved as version ${revised.version}. Any earlier approval no longer applies.`;
-    });
 
   const approve = () =>
     run("approve", async () => {
@@ -117,6 +118,16 @@ export function ProposalCard({ plan, event, contacts, approvals, onChanged }: Pr
         </label>
       )}
 
+      {scheduled && (
+        <div className="draft">
+          <span className="muted">Proposed time (your browser timezone)</span>
+          <input type="datetime-local" value={startDraft} disabled={!editable || busy !== null}
+            onChange={(e) => { setStartDraft(e.target.value); setTimeDirty(true); }} />
+          <input type="datetime-local" value={endDraft} disabled={!editable || busy !== null}
+            onChange={(e) => { setEndDraft(e.target.value); setTimeDirty(true); }} />
+        </div>
+      )}
+
       <div className="approval-line">
         {approval ? (
           <span className="ok-text">
@@ -133,18 +144,33 @@ export function ProposalCard({ plan, event, contacts, approvals, onChanged }: Pr
 
       {editable && (
         <div className="buttons">
-          <button onClick={save} disabled={!dirty || !draft.trim() || busy !== null}>
+          <button onClick={() => run("save", async () => {
+            const patch = {
+              expected_version: plan.version,
+              ...(dirty ? { message_text: draft } : {}),
+              ...(timeDirty ? { new_start_at: new Date(startDraft).toISOString(), new_end_at: new Date(endDraft).toISOString() } : {}),
+            };
+            const revised = await api.revisePlan(plan.id, patch);
+            setDirty(false); setTimeDirty(false);
+            return `Saved as version ${revised.version}. Any earlier approval no longer applies.`;
+          })} disabled={(!dirty && !timeDirty) || (dirty && !draft.trim()) || (timeDirty && (!startDraft || !endDraft)) || busy !== null}>
             {busy === "save" ? "Saving…" : "Save edit"}
           </button>
-          <button className="primary" onClick={approve} disabled={dirty || busy !== null}>
+          <button className="primary" onClick={approve} disabled={dirty || timeDirty || busy !== null}>
             {busy === "approve" ? "Approving…" : `Approve v${plan.version}`}
           </button>
           <button className="danger" onClick={reject} disabled={busy !== null}>
             {busy === "reject" ? "Rejecting…" : "Reject"}
           </button>
-          {dirty && <span className="muted small">Save your edit before approving.</span>}
+          {(dirty || timeDirty) && <span className="muted small">Save your edit before approving.</span>}
         </div>
       )}
     </section>
   );
+}
+
+function toInput(value: string): string {
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }

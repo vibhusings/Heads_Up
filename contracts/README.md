@@ -37,13 +37,21 @@ Action types the executor runs:
   `request_required=true` fails the action and leaves the event unchanged; actions
   listing it in `depends_on_action_ids` are `skipped`, so the plan should include an
   independent request message instead.
+- `create_event` — needs `event_title`, start/end, timezone and tentative status.
+  Scheduling plans place it before a dependent reply, so a failed calendar hold
+  skips the message instead of claiming the time was reserved.
 
 Mock results are recorded as `simulated`, never `succeeded`. Timeouts are `unknown`.
 
 `contracts/fixtures/foundation.json` covers location lateness;
 `contracts/fixtures/flight.json` covers the delayed-flight meeting scenario.
+`contracts/fixtures/combined.json` contains Sam and Alex together for additive demos.
 
 `messaging.MessagingProvider.send_message(action_key, contact_id, chat_id, text)` is
 the provider boundary. `MESSAGING_MODE=mock` is the default; selecting unconfigured
 live mode returns a truthful `AUTH_REQUIRED` failure and never falls back to the
 simulated outbox.
+
+`POST /api/messaging/poll` reads only verified mapped Beeper chats (or explicit
+mock messages in mock mode). Provider message IDs, inbound messages, and parsed
+scheduling requests are persisted in `SessionState`, so polling is duplicate-safe.

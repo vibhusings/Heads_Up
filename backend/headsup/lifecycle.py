@@ -70,6 +70,9 @@ class LifecycleService:
                 raise LifecycleError("INVALID_STATE", "only a proposed plan can be rejected")
             rejected = plan.model_copy(update={"status": "rejected"})
             self.repository.put_plan(rejected)
+            request_id = plan.evidence_snapshot.get("schedule_request_id")
+            if request_id and (schedule := self.repository.get("schedule_requests", request_id)) is not None:
+                self.repository.put("schedule_requests", schedule.model_copy(update={"status": "rejected"}))
             return rejected
 
     def approve(
@@ -101,6 +104,9 @@ class LifecycleService:
             self.repository.put("approvals", approval)
             queued = plan.model_copy(update={"status": "approved"})
             self.repository.put_plan(queued)
+            request_id = plan.evidence_snapshot.get("schedule_request_id")
+            if request_id and (schedule := self.repository.get("schedule_requests", request_id)) is not None:
+                self.repository.put("schedule_requests", schedule.model_copy(update={"status": "approved"}))
             return ExecutionOutcome(plan=queued, results=[], duplicate=False)
 
     @staticmethod

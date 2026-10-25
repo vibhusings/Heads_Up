@@ -31,6 +31,7 @@ from .executor import Executor
 from .ledger import Ledger
 from .lifecycle import LifecycleService
 from .messaging import BeeperMessaging, SimulatedMessaging, UnavailableMessaging, apply_chat_mappings
+from .scheduling import InboundScheduler
 from .pairing import PairingStore
 from .services import SMS, AviationStackSource, SimFlightSource, SimRestaurants
 from .supervisor import Supervisor
@@ -82,6 +83,7 @@ class Runtime:
         self.devices.today = self.clock.today
         self.calendar = self._calendar_provider()
         self.executor = Executor(self.foundation, self.messaging, lambda: self.calendar)
+        self.inbound = InboundScheduler(self.foundation, self.messaging, settings.scheduling_timezone)
 
         # Shared state.
         self.tasks: dict[str, Task] = {}
@@ -153,6 +155,8 @@ class Runtime:
         for agent in self.agents.values():
             agent.start()
         self._bg.append(asyncio.create_task(self._guardian()))
+        if self.settings.beeper_poll_interval_s > 0:
+            self._bg.append(asyncio.create_task(self._poll_beeper(), name="beeper-inbound-poll"))
         self.bus.publish("system.started", {"offline": self.settings.offline, "agents": list(self.agents),
                                             "budget_usd": self.ledger.daily_budget_usd,
                                             "recovered_executions": len(recovered)}, source="runtime")
@@ -185,6 +189,14 @@ class Runtime:
             if down != self.paused:
                 self.paused = down
                 self.bus.publish("system.paused" if down else "system.resumed", {}, source="guardian")
+
+    async def _poll_beeper(self) -> None:
+        while True:
+            try:
+                await self.inbound.poll()
+            except Exception:
+                pass
+            await asyncio.sleep(self.settings.beeper_poll_interval_s)
 
     def set_chaos(self, fault: str, on: bool) -> None:
         self.chaos.set(fault, on)

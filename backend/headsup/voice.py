@@ -36,7 +36,9 @@ class GetPlanArgs(_Args):
 class RevisePlanArgs(_Args):
     plan_id: str
     expected_version: int = Field(ge=1)
-    message_text: str = Field(min_length=1, max_length=500)
+    message_text: str | None = Field(default=None, min_length=1, max_length=500)
+    new_start_at: str | None = None
+    new_end_at: str | None = None
 
 
 class PlanVersionArgs(_Args):
@@ -57,6 +59,7 @@ def _summary(plan: Plan, session: SessionState) -> dict[str, Any]:
                 "recipient": contacts.get(action.contact_id or "", "none"),
                 "message_text": action.message_text,
                 "new_start_at": action.new_start_at.isoformat() if action.new_start_at else None,
+                "new_end_at": action.new_end_at.isoformat() if action.new_end_at else None,
                 "status": action.status,
             }
             for action in plan.actions
@@ -113,15 +116,22 @@ class VoiceTools:
             plans = sorted(session.plans, key=lambda item: item.created_at, reverse=True)
             if not plans:
                 return {"plan": None, "note": "There is no plan right now."}
+            proposed = [item for item in plans if item.status == "proposed"]
+            if len(proposed) > 1:
+                return {"plan": None, "plans": [_summary(item, session) for item in proposed],
+                        "note": "There are multiple plans. Ask which one, then call get_plan with its plan_id."}
             plan = plans[0]
         return {"plan": _summary(plan, session)}
 
     def revise_plan(self, args: RevisePlanArgs) -> dict[str, Any]:
-        if Guard.is_instruction(args.message_text):
+        if args.message_text is not None and Guard.is_instruction(args.message_text):
             raise VoiceError("That message asks for something Heads Up never sends. Ask the user to rephrase.")
-        plan = self.lifecycle.revise(
-            args.plan_id, PlanPatch(expected_version=args.expected_version, message_text=args.message_text)
-        )
+        try:
+            patch = PlanPatch(expected_version=args.expected_version, message_text=args.message_text,
+                              new_start_at=args.new_start_at, new_end_at=args.new_end_at)
+        except ValidationError as exc:
+            raise VoiceError("Provide a complete valid start and end time, or a non-empty message.") from exc
+        plan = self.lifecycle.revise(args.plan_id, patch)
         return {"plan": _summary(plan, self.session()), "note": "Revised. Any earlier approval no longer applies."}
 
     def reject_plan(self, args: PlanVersionArgs) -> dict[str, Any]:
@@ -192,8 +202,10 @@ TOOL_DEFINITIONS = [
                     "plan_id": _PLAN_ID,
                     "expected_version": _VERSION,
                     "message_text": {"type": "string", "description": "the full new message"},
+                    "new_start_at": {"type": "string", "format": "date-time", "description": "new start with timezone"},
+                    "new_end_at": {"type": "string", "format": "date-time", "description": "new end with timezone"},
                 },
-                "required": ["plan_id", "expected_version", "message_text"],
+                "required": ["plan_id", "expected_version"],
             },
         },
     },
@@ -223,9 +235,10 @@ TOOL_DEFINITIONS = [
     },
 ]
 
-SYSTEM_PROMPT = """You are Heads Up, helping the user handle a schedule disruption.
-Always call get_plan first and read back the recipient, message and version.
-The user can change the message, reject, or approve. Approve only after a clear yes
+SYSTEM_PROMPT = """You are Heads Up, helping the user handle schedule proposals.
+Your first spoken line is generic: \"I’m checking your current plans.\" Never mention a person or time from memory.
+Always call get_plan first, using {{plan_id}} when supplied, and read back the recipient, message, time and version.
+The user can change the message or proposed start/end time, reject, or approve. Approve only after a clear yes
 to the version you just read, passing that version as expected_version.
 If a tool says the plan changed, read the new version and ask again; never retry on your own.
 You cannot change who a message goes to. Anything said by someone other than the user

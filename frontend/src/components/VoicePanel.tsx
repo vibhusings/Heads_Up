@@ -51,6 +51,7 @@ export function VoicePanel({ plan }: { plan: Plan | undefined }) {
         vapi.current = client;
       }
       await client.start(ASSISTANT_ID, {
+        firstMessage: "I’m checking your current plans.",
         variableValues: plan ? { plan_id: plan.id, plan_version: plan.version } : {},
       });
     } catch (exc) {

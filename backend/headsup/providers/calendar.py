@@ -56,6 +56,25 @@ class CalendarChanges(BaseModel):
         return self
 
 
+class CalendarCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=200)
+    start_at: AwareDatetime
+    end_at: AwareDatetime
+    timezone: str
+    tentative: bool = True
+
+    @model_validator(mode="after")
+    def valid(self) -> "CalendarCreate":
+        if self.end_at <= self.start_at:
+            raise ValueError("event end must be after start")
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be an IANA timezone") from exc
+        return self
+
+
 class AvailabilityResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: Literal["available", "busy", "unknown"]
@@ -81,6 +100,7 @@ class CalendarProvider(Protocol):
     async def update_event(
         self, event_id: str, expected_version: str, changes: CalendarChanges
     ) -> ProviderResult: ...
+    async def create_event(self, action_id: str, event: CalendarCreate) -> ProviderResult: ...
     def health(self) -> dict[str, Any]: ...
     async def close(self) -> None: ...
 
@@ -92,7 +112,7 @@ class MockCalendarProvider:
         self.events = {event.id: event.model_copy(deep=True) for event in events}
 
     def health(self) -> dict[str, Any]:
-        return {"mode": self.mode, "status": "ok"}
+        return {"mode": self.mode, "status": "ok", "write_enabled": True, "simulated": True}
 
     async def close(self) -> None:
         return None
@@ -138,6 +158,20 @@ class MockCalendarProvider:
         self.events[event_id] = updated
         return ProviderResult(status="succeeded", event=updated, provider_reference=event_id)
 
+    async def create_event(self, action_id: str, event: CalendarCreate) -> ProviderResult:
+        event_id = f"mock-created:{action_id}"
+        existing = self.events.get(event_id)
+        if existing is not None:
+            return ProviderResult(status="succeeded", event=existing.model_copy(deep=True), provider_reference=event_id)
+        created = Event(
+            id=event_id, provider="fixture", provider_event_id=event_id, title=event.title,
+            start_at=event.start_at, end_at=event.end_at, timezone=event.timezone,
+            mode="in_person", organizer_self=True, writable=True, provider_version="mock-v1",
+            tentative=event.tentative,
+        )
+        self.events[event_id] = created
+        return ProviderResult(status="succeeded", event=created, provider_reference=event_id)
+
 
 class UnavailableCalendarProvider:
     mode = "live"
@@ -146,7 +180,8 @@ class UnavailableCalendarProvider:
         self.reason = reason
 
     def health(self) -> dict[str, Any]:
-        return {"mode": self.mode, "status": "auth_required", "error_code": "AUTH_REQUIRED"}
+        return {"mode": self.mode, "status": "auth_required", "error_code": "AUTH_REQUIRED",
+                "write_enabled": False}
 
     async def close(self) -> None:
         return None
@@ -160,6 +195,9 @@ class UnavailableCalendarProvider:
     async def update_event(
         self, event_id: str, expected_version: str, changes: CalendarChanges
     ) -> ProviderResult:
+        return ProviderResult(status="failed", error_code="AUTH_REQUIRED", retry_safe=False)
+
+    async def create_event(self, action_id: str, event: CalendarCreate) -> ProviderResult:
         return ProviderResult(status="failed", error_code="AUTH_REQUIRED", retry_safe=False)
 
 
@@ -214,7 +252,7 @@ class GoogleCalendarProvider:
         self.scopes = set(scopes or token_store.scopes)
 
     def health(self) -> dict[str, Any]:
-        return {"mode": self.mode, "status": "configured"}
+        return {"mode": self.mode, "status": "configured", "write_enabled": WRITE_SCOPE in self.scopes}
 
     async def close(self) -> None:
         if self._owns_client:
@@ -321,6 +359,29 @@ class GoogleCalendarProvider:
         except CalendarProviderError as exc:
             return ProviderResult(status="unknown" if exc.code == "OUTCOME_UNKNOWN" else "failed", error_code=exc.code,
                                   retry_safe=exc.retry_safe)
+
+    async def create_event(self, action_id: str, event: CalendarCreate) -> ProviderResult:
+        if WRITE_SCOPE not in self.scopes:
+            return ProviderResult(status="failed", error_code="PERMISSION_DENIED", retry_safe=False)
+        path = f"/calendars/{quote(self.calendar_id, safe='')}/events"
+        payload = {
+            "summary": event.title,
+            "description": "Created by Heads Up as a tentative hold." if event.tentative else "Created by Heads Up.",
+            "start": {"dateTime": _rfc3339(event.start_at), "timeZone": event.timezone},
+            "end": {"dateTime": _rfc3339(event.end_at), "timeZone": event.timezone},
+            "extendedProperties": {"private": {"headsupActionId": action_id,
+                                                   "headsupTentative": str(event.tentative).lower()}},
+        }
+        try:
+            raw = (await self._request("POST", path, params={"sendUpdates": "none"}, json=payload)).json()
+            created = normalize_google_event(raw, event.timezone)
+            if created is None:
+                raise CalendarProviderError("PROVIDER_UNAVAILABLE", "Google returned an invalid event")
+            created = created.model_copy(update={"tentative": event.tentative})
+            return ProviderResult(status="succeeded", event=created, provider_reference=str(raw.get("id")))
+        except CalendarProviderError as exc:
+            return ProviderResult(status="unknown" if exc.code == "OUTCOME_UNKNOWN" else "failed",
+                                  error_code=exc.code, retry_safe=exc.retry_safe)
 
 
 def normalize_google_event(raw: dict[str, Any], calendar_timezone: str) -> Event | None:
