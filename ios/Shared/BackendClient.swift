@@ -1,6 +1,7 @@
 import Foundation
 
-/// WebSocket to the Python backend, with automatic reconnect.
+/// WebSocket to the Python backend, with automatic reconnect. Used by the iPhone app,
+/// and by the watch app in direct mode.
 final class BackendClient {
     var onMessage: ((Inbound) -> Void)?
     var onStatus: ((Bool) -> Void)?
@@ -22,6 +23,14 @@ final class BackendClient {
             self?.onStatus?(error == nil)
             if error == nil { self?.retryDelay = 1 }
         }
+    }
+
+    /// Close the connection and stop reconnecting.
+    func disconnect() {
+        url = nil
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        onStatus?(false)
     }
 
     func send<T: Encodable>(_ message: T) {

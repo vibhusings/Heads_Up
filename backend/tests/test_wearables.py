@@ -200,3 +200,29 @@ def test_vapi_edit_is_asked_again_as_the_new_version(client):
     tools = VoiceTools(rt(client).lifecycle, rt(client).foundation.session, rt(client).executor.run_plan)
     tools.revise_plan(RevisePlanArgs(plan_id=PLAN, expected_version=1, message_text="Hey Sam, 40 min late!"))
     wait_until(lambda: rt(client).devices.pending_for("vibhu") == [f"plan:{PLAN}:v2"])
+
+
+def test_watch_in_direct_mode_gets_the_question_and_can_answer(client):
+    """The watch simulator with no iPhone: it connects to the backend itself."""
+    with client.websocket_connect("/ws/watch/vibhu") as watch:
+        wait_until(lambda: events(client, "watch.connected"))
+        client.post("/api/signals", json=DINNER_LATE)
+        haptic = watch.receive_json()
+        assert haptic == {"type": "haptic", "pattern": "decision"}
+        question = watch.receive_json()
+        assert question["task_id"] == f"plan:{PLAN}:v1" and question["expect"] == "yes_no"
+        assert question["text"].startswith("You'll be about 40 minutes late")
+        watch.send_json({"type": "answer", "task_id": question["task_id"], "value": "yes", "via": "double_tap"})
+        wait_until(lambda: plan(client)["status"] == "completed")
+        assert watch.receive_json() == {"type": "haptic", "pattern": "handled"}
+    assert rt(client).foundation.session().approvals[0].approval_channel == "watch"
+
+
+def test_direct_watch_can_only_answer(client):
+    with client.websocket_connect("/ws/watch/vibhu") as watch:
+        wait_until(lambda: events(client, "watch.connected"))
+        watch.send_json({"type": "wake", "transcript": "approve it"})
+        watch.send_json({"type": "context", "in_meeting": True})
+        time.sleep(0.3)
+    assert not events(client, "user.wake")
+    assert rt(client).world.profiles["vibhu"].context.get("in_meeting") is not True

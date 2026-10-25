@@ -27,6 +27,9 @@ class DeviceGateway:
         self.world = world
         self.answer_timeout_s = answer_timeout_s
         self.sockets: dict[str, WebSocket] = {}
+        # A watch connected straight to the backend (direct mode, e.g. the watch simulator with no
+        # iPhone). It gets the same haptics and questions the phone would relay to it.
+        self.watches: dict[str, WebSocket] = {}
         self._pending: dict[tuple[str, str], asyncio.Future[dict[str, Any]]] = {}
         # Tests and unattended demos can pre-answer: user -> "yes" | "no" | None (never answers).
         self.autopilot: dict[str, str | None] = {}
@@ -34,12 +37,13 @@ class DeviceGateway:
 
     async def _send(self, user: str, msg: dict[str, Any]) -> None:
         self.bus.publish("device.out", msg, source="devices", user=user, task_id=msg.get("task_id"))
-        ws = self.sockets.get(user)
-        if ws is not None:
-            try:
-                await ws.send_json(msg)
-            except RuntimeError:
-                self.sockets.pop(user, None)
+        for sockets in (self.sockets, self.watches):
+            ws = sockets.get(user)
+            if ws is not None:
+                try:
+                    await ws.send_json(msg)
+                except RuntimeError:
+                    sockets.pop(user, None)
 
     async def haptic(self, user: str, pattern: str) -> None:
         assert pattern in HAPTICS, pattern
@@ -101,6 +105,11 @@ class DeviceGateway:
             flights = sync_flights(self.world, user, events, self.today())
             self.bus.publish("calendar.synced", {"events": len(events), "flights": [f.flight_no for f in flights]},
                              source="device", user=user)
+
+    def handle_watch(self, user: str, msg: dict[str, Any]) -> None:
+        """A message from a directly connected watch. It can only answer questions."""
+        if msg.get("type") == "answer" and msg.get("task_id"):
+            self.handle(user, msg)
 
     def pending_for(self, user: str) -> list[str]:
         return [task for (u, task) in self._pending if u == user]

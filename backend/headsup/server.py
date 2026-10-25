@@ -300,6 +300,28 @@ async def device(ws: WebSocket, user: str):
         rt.bus.publish("device.disconnected", {}, source="devices", user=user)
 
 
+@app.websocket("/ws/watch/{user}")
+async def watch(ws: WebSocket, user: str):
+    """Direct mode for the Apple Watch: same haptics and questions as the phone relays, answers back.
+    Lets the watch app (or the watch simulator) work without the iPhone app."""
+    rt = rt_of(ws)
+    if user not in rt.world.profiles:
+        await ws.close(code=4404)
+        return
+    await ws.accept()
+    rt.devices.watches[user] = ws
+    rt.bus.publish("watch.connected", {}, source="devices", user=user)
+    try:
+        while True:
+            rt.devices.handle_watch(user, await ws.receive_json())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if rt.devices.watches.get(user) is ws:
+            del rt.devices.watches[user]
+        rt.bus.publish("watch.disconnected", {}, source="devices", user=user)
+
+
 # ---------- judges' screen ----------
 
 @app.get("/")

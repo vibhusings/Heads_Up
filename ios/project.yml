@@ -51,6 +51,9 @@ targets:
         CFBundleDisplayName: Heads Up
         WKApplication: true
         WKCompanionAppBundleIdentifier: edu.umd.headsup.HeadsUp
+        WKRunsIndependentlyOfCompanionApp: true  # can run (and be tested) without the iPhone app
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true  # direct mode talks to the backend over plain ws:// on the local network
         WKBackgroundModes: [workout-processing]
         NSHealthShareUsageDescription: Heads Up runs a workout session so it can tap your wrist.
         NSHealthUpdateUsageDescription: Heads Up runs a workout session so it can tap your wrist.

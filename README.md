@@ -97,6 +97,8 @@ Calls to Opus use server-side refusal fallbacks (`fallbacks: "default"`), so a d
 - **Voice:** "Hey Heads Up, what's pending?", "approve it", "reject it".
 - **No verified contact:** the draft is read out but never offered for approval.
 
+**Watch direct mode:** the watch app can also connect straight to the backend at `/ws/watch/{user}`, getting the same haptics and questions the phone would relay. Answers are the only thing it can send. It's on by default in the watch simulator (no iPhone needed, backend at `ws://localhost:8000`) and can be switched on from the watch app's settings (gear icon) on a real watch.
+
 It uses the phone's existing message format (`ios/Shared/Protocol.swift`), with `task_id` set to `plan:<plan_id>:v<version>`, so the app needs no changes for this. `HEADSUP_WEARABLE_USER` (default `vibhu`) names the phone that is asked. Without the phone, the control room's virtual device (`/sim/answer`) stands in.
 
 ### Running the demo from the control room
